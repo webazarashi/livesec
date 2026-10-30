@@ -98,7 +98,30 @@ const osv: OsvRecord[] = [
     references: [{ type: "ADVISORY", url: "https://pkg.go.dev/vuln/GO-2026-90006" }],
   },
 ];
-for (const r of osv) await catalog.upsertOsv(normalizeOsv(r), null);
+// 記事を作らずに残すサンプル（管理画面の「記事待ち」・緊急ページの「記事準備中」の確認用）
+const pendingOsv: OsvRecord[] = [
+  {
+    id: "GHSA-sample-0007-0007",
+    modified: daysAgo(0),
+    published: daysAgo(0),
+    aliases: ["CVE-2026-90007"],
+    summary: `細工したJWTで署名の検証を回避できる ${SAMPLE}`,
+    affected: [{ package: { ecosystem: "RubyGems", name: "example-jwt" }, ranges: [{ type: "ECOSYSTEM", events: [{ introduced: "0" }, { fixed: "2.8.1" }] }] }],
+    references: [{ type: "ADVISORY", url: "https://github.com/advisories/GHSA-sample-0007-0007" }],
+    database_specific: { severity: "CRITICAL" },
+  },
+  {
+    id: "GHSA-sample-0008-0008",
+    modified: daysAgo(1),
+    published: daysAgo(1),
+    aliases: ["CVE-2026-90008"],
+    summary: `アップロードしたファイル名でパスを操作できる ${SAMPLE}`,
+    affected: [{ package: { ecosystem: "Packagist", name: "example/uploader" }, ranges: [{ type: "ECOSYSTEM", events: [{ introduced: "3.0.0" }, { fixed: "3.2.5" }] }] }],
+    references: [{ type: "ADVISORY", url: "https://github.com/advisories/GHSA-sample-0008-0008" }],
+    database_specific: { severity: "MODERATE" },
+  },
+];
+for (const r of [...osv, ...pendingOsv]) await catalog.upsertOsv(normalizeOsv(r), null);
 
 const nvd: NvdCve[] = [
   {
@@ -135,7 +158,7 @@ await catalog.applyEpss(
   [],
 );
 const ids = ["CVE-2026-90001", "CVE-2026-90002", "CVE-2026-90003", "CVE-2026-90004", "CVE-2026-90005", "CVE-2026-90006"];
-await catalog.refreshDerived(ids, { windowStart });
+await catalog.refreshDerived([...ids, "CVE-2026-90007", "CVE-2026-90008"], { windowStart });
 
 // 記事（固定形式で作って、機械照合ゲートを通す）
 const commands: Record<string, string> = {
@@ -233,9 +256,12 @@ const headlines: Record<string, string> = {
   "CVE-2026-90005": "HTTP/2でリクエストスマグリングが起きる",
   "CVE-2026-90006": "細工したパスでルーティングを回避できる",
 };
-const facts = await catalog.getFactsMany(ids);
+// 何度実行しても同じ結果になるよう、記事がまだないCVEだけ取り込む
+const missing: string[] = [];
+for (const id of ids) if (!(await catalog.getArticleByCve(id))) missing.push(id);
+const facts = await catalog.getFactsMany(missing);
 const text = facts.map((f) => article(f, headlines[f.id]!)).join("\n");
-const results = await importArticles(catalog, text);
+const results = text ? await importArticles(catalog, text) : [];
 for (const r of results) console.log(`${r.status}\t${r.slug}\t${r.url ?? ""}\t${(r.errors ?? []).join(" / ")}${(r.mismatches ?? []).map((m) => m.message).join(" / ")}`);
-await catalog.setPinned(results.find((r) => r.status !== "rejected")?.slug ?? "", true);
+if (results.length) await catalog.setPinned(results.find((r) => r.status !== "rejected")?.slug ?? "", true);
 console.log("seed done");
