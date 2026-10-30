@@ -1,0 +1,45 @@
+// 一次対応まとめ：取り込み・突合・通知ワーカー（公開しない）
+// D1 の database_id は `wrangler d1 create` の結果に置き換える（README 参照）
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "ichiji-matome-jobs",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": { "enabled": true },
+  "triggers": {
+    // 取り込み＋OSV再照会：3時間ごと／週次まとめ：月曜09:00 JST（UTC 00:00）／ランキング確定：毎時15分
+    "crons": ["0 */3 * * *", "0 0 * * 1", "15 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "CATALOG_DB",
+      "database_name": "ichiji-catalog",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "../../packages/db/migrations/catalog"
+    },
+    {
+      "binding": "APP_DB",
+      "database_name": "ichiji-app",
+      "database_id": "00000000-0000-0000-0000-000000000002",
+      "migrations_dir": "../../packages/db/migrations/app"
+    }
+  ],
+  "r2_buckets": [{ "binding": "RAW", "bucket_name": "ichiji-raw" }],
+  "queues": {
+    "producers": [{ "binding": "JOBS_QUEUE", "queue": "ichiji-jobs" }],
+    "consumers": [{ "queue": "ichiji-jobs", "max_batch_size": 10, "max_retries": 3 }]
+  },
+  "workflows": [
+    { "name": "ichiji-ingest", "binding": "INGEST_WORKFLOW", "class_name": "IngestWorkflow" },
+    { "name": "ichiji-match", "binding": "MATCH_WORKFLOW", "class_name": "MatchWorkflow" },
+    { "name": "ichiji-digest", "binding": "DIGEST_WORKFLOW", "class_name": "DigestWorkflow" }
+  ],
+  "services": [{ "binding": "WEB", "service": "ichiji-matome-web" }],
+  "vars": {
+    "PUBLIC_BASE_URL": "https://ichiji-matome-web.example.workers.dev",
+    "ANALYTICS_DATASET": "ichiji_article_views"
+  }
+  // シークレット（wrangler secret put）：WEBHOOK_ENC_KEY, INTERNAL_TOKEN, NVD_API_KEY（任意）, CF_ACCOUNT_ID, CF_ANALYTICS_TOKEN
+}
