@@ -1,0 +1,25 @@
+{
+  "$comment": "一般緊急度（7-3）の閾値。運用しながら調整する。値を変えたら packages/core のテストも確認すること。",
+  "S": {
+    "pocMinCvss": 9.0,
+    "minEpss": 0.5,
+    "epssMinCvss": 7.0
+  },
+  "A": {
+    "minCvss": 9.0,
+    "signalMinCvss": 7.0,
+    "signalMinEpss": 0.1
+  },
+  "B": {
+    "minCvss": 7.0,
+    "signalMinCvss": 4.0,
+    "signalMinEpss": 0.1
+  },
+  "ghsaSeverityScore": {
+    "CRITICAL": 9.0,
+    "HIGH": 7.0,
+    "MODERATE": 4.0,
+    "MEDIUM": 4.0,
+    "LOW": 1.0
+  }
+}

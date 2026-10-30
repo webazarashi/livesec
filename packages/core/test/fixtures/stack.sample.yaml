@@ -1,0 +1,38 @@
+# 先方のAIエージェントが生成 → 人がレビュー → 一次対応まとめへ送信
+schema_version: "1.0"
+generated_at: "2026-10-29T17:00:00+09:00"
+generated_by: "claude-code"
+service:
+  name: "acme-crm"
+  data_sensitivity: "high"        # high / medium / low
+
+components:
+  - name: "api-server"
+    exposure: "internet"          # internet / internal / offline
+    exposure_reason: "ALB経由で公開（infra/alb.tf）"
+    managed: false
+    sbom: "sbom/api-server.cdx.json"
+    image:
+      purl: "pkg:docker/node@20.18.1-bookworm-slim"
+      evidence: "Dockerfile"
+    middleware:
+      - purl: "pkg:generic/nginx@1.27.3"
+        evidence: "docker-compose.yml"
+
+  - name: "web-liff"
+    exposure: "internet"
+    exposure_reason: "LINEミニアプリとして公開"
+    managed: false
+    sbom: "sbom/web-liff.cdx.json"
+    cdn_scripts:                  # SBOMに出ないCDN読み込み
+      - name: "LIFF SDK"
+        url: "https://static.line-scdn.net/liff/edge/2/sdk.js"
+        evidence: "src/index.html"
+
+  - name: "main-db"
+    exposure: "internal"
+    exposure_reason: "VPC内のみ"
+    managed: true                 # RDS等。パッチは提供元
+    middleware:
+      - purl: "pkg:generic/postgresql@16.4"
+        evidence: "infra/rds.tf"
