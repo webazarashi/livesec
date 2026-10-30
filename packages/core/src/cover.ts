@@ -37,6 +37,9 @@ function wrap(text: string, perLine: number, maxLines: number): string[] {
 export function renderCoverSvg(input: CoverInput): string {
   const rank = RANK_COLORS[input.rank];
   const headline = wrap(input.headline, 22, 2);
+  const badgeText = `緊急度 ${input.rank}｜${rank.label}`;
+  // 全角は30px、半角は約17pxとして幅を見積もる
+  const badgeWidth = 48 + [...badgeText].reduce((w, ch) => w + (/[\x20-\x7e]/.test(ch) ? 17 : 30), 0);
   const e = escapeHtml;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="${e(`${input.cveId} ${input.headline}`)}">
   <defs>
@@ -54,9 +57,9 @@ export function renderCoverSvg(input: CoverInput): string {
     <text x="72" y="200" font-size="34" fill="#9fd9c0" font-family="ui-monospace,Menlo,monospace">${e(input.packageLabel)}</text>
     <text x="72" y="290" font-size="84" font-weight="800" font-family="ui-monospace,Menlo,monospace">${e(input.cveId)}</text>
     ${headline.map((line, i) => `<text x="72" y="${370 + i * 56}" font-size="44" font-weight="700">${e(line)}</text>`).join("\n    ")}
-    <rect x="72" y="500" width="300" height="68" rx="10" fill="${rank.bg}"/>
-    <text x="96" y="546" font-size="30" font-weight="800" fill="${rank.fg}">緊急度 ${input.rank}｜${e(rank.label)}</text>
-    ${input.fixed ? `<text x="404" y="546" font-size="30" fill="#e8f1ee">修正版 ${e(input.fixed)}</text>` : ""}
+    <rect x="72" y="500" width="${badgeWidth}" height="68" rx="10" fill="${rank.bg}"/>
+    <text x="96" y="546" font-size="30" font-weight="800" fill="${rank.fg}">${e(badgeText)}</text>
+    ${input.fixed ? `<text x="${72 + badgeWidth + 32}" y="546" font-size="30" fill="#e8f1ee">修正版 ${e(input.fixed)}</text>` : ""}
   </g>
 </svg>`;
 }

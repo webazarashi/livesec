@@ -7,7 +7,7 @@ import {
   type AskArticleData,
   type AskTarget,
 } from "@ichiji/core/askai";
-import { copyText } from "./site";
+import { copyText, member } from "./site";
 
 /**
  * Ask AI（6章）。プロンプトはブラウザ側で組み立て、自社のサーバには送らない。
@@ -101,6 +101,7 @@ if (root && dataEl) {
   // 会員なら「私の環境」をAPIから取得して差し込む
   void (async () => {
     try {
+      if (!(await member).user) return;
       const res = await fetch("/api/me/environment", { credentials: "same-origin" });
       if (!res.ok) return;
       const body = (await res.json()) as { text: string };

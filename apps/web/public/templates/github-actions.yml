@@ -1,0 +1,48 @@
+# 一次対応まとめ：デプロイごとに stack.yaml と SBOM を送信する（8-2）
+# 使い方：
+#   1. このファイルを .github/workflows/ichiji-stack.yml に置く
+#   2. リポジトリのシークレットに ICHIJI_API_TOKEN（プロジェクト設定で発行）を登録する
+#   3. ICHIJI_URL を一次対応まとめの公開URL（https://<name>.<subdomain>.workers.dev）にする
+#   4. SBOM の生成コマンドを、stack.yaml の components[].sbom に合わせて書き換える
+name: ichiji-stack
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  send-stack:
+    runs-on: ubuntu-latest
+    env:
+      ICHIJI_URL: https://ichiji-matome-web.example.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: SBOM を生成する（cdxgen）
+        run: |
+          mkdir -p sbom
+          npx --yes @cyclonedx/cdxgen@11 -o sbom/api-server.cdx.json ./apps/api-server
+          npx --yes @cyclonedx/cdxgen@11 -o sbom/web-liff.cdx.json ./apps/web-liff
+
+      - name: stack.yaml を JSON Schema で検証する
+        run: |
+          curl -fsSL "$ICHIJI_URL/schemas/stack.schema.json" -o /tmp/stack.schema.json
+          npx --yes ajv-cli@5 validate --spec=draft2020 -s /tmp/stack.schema.json -d stack.yaml
+
+      - name: 一次対応まとめへ送信する
+        env:
+          ICHIJI_API_TOKEN: ${{ secrets.ICHIJI_API_TOKEN }}
+        run: |
+          args=(-F "stack=@stack.yaml")
+          for f in sbom/*.cdx.json; do args+=(-F "$f=@$f"); done
+          curl -fsS -X POST "$ICHIJI_URL/api/v1/stack" \
+            -H "Authorization: Bearer $ICHIJI_API_TOKEN" \
+            "${args[@]}"

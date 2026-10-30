@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { renderCoverSvg, getTopic, factsFixed, purlWithoutVersion } from "@ichiji/core";
+import { renderCoverSvg, getTopic, factsFixed } from "@ichiji/core";
 import { parseJson } from "@ichiji/db";
 import { cacheMediaPage, catalog } from "../../server/media";
 
@@ -16,7 +16,7 @@ export const GET: APIRoute = async (context) => {
   const parts = article.title.split("｜");
   const svg = renderCoverSvg({
     cveId: article.primary_cve,
-    packageLabel: pkg ? (pkg.ecosystem === "watchlist" ? pkg.name : purlWithoutVersion(pkg.purl).replace(/^pkg:/, "")) : "",
+    packageLabel: pkg?.name ?? "",
     headline: parts[1] ?? parts[0] ?? article.title,
     topicLabel: getTopic(article.topic)?.name.replace(/（.*）/, "") ?? article.topic,
     rank: facts?.rank ?? article.general_rank,

@@ -4,21 +4,24 @@
  */
 
 // ---------- ログイン状態（ヘッダー） ----------
+export interface MemberInfo {
+  user: { email: string } | null;
+  isAdmin?: boolean;
+}
+
+/** ログイン状態。会員のときだけ個人の情報（私の環境など）を取りに行くために共有する */
+export const member: Promise<MemberInfo> = fetch("/api/me", { credentials: "same-origin" })
+  .then((res) => res.json() as Promise<MemberInfo>)
+  .catch(() => ({ user: null }));
+
 async function refreshMemberNav(): Promise<void> {
   const nav = document.querySelector("[data-member-nav]");
-  if (!nav) return;
-  try {
-    const res = await fetch("/api/me", { credentials: "same-origin" });
-    const data = (await res.json()) as { user: { email: string } | null; isAdmin?: boolean };
-    if (!data.user) return;
-    nav.querySelectorAll<HTMLElement>("[data-guest]").forEach((el) => (el.hidden = true));
-    nav.querySelectorAll<HTMLElement>("[data-member]").forEach((el) => (el.hidden = false));
-    if (data.isAdmin) nav.querySelectorAll<HTMLElement>("[data-admin]").forEach((el) => (el.hidden = false));
-    document.documentElement.dataset.member = "1";
-    document.dispatchEvent(new CustomEvent("ichiji:member", { detail: data }));
-  } catch {
-    // オフライン等は無視
-  }
+  const data = await member;
+  if (!nav || !data.user) return;
+  nav.querySelectorAll<HTMLElement>("[data-guest]").forEach((el) => (el.hidden = true));
+  nav.querySelectorAll<HTMLElement>("[data-member]").forEach((el) => (el.hidden = false));
+  if (data.isAdmin) nav.querySelectorAll<HTMLElement>("[data-admin]").forEach((el) => (el.hidden = false));
+  document.documentElement.dataset.member = "1";
 }
 
 // ---------- クリップボード ----------

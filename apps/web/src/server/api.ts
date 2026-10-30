@@ -218,7 +218,13 @@ app.post("/admin/prompt", requireAdmin, async (c) => {
     const existing = await catalog.getArticleByCve(id);
     const topic = (existing?.topic ?? f.topic) as TopicKey | null;
     if (!topic || !isTopicKey(topic)) continue;
-    items.push({ facts: f, topic, slug: existing?.slug ?? suggestSlug(f), regenerate: Boolean(existing) });
+    const full = existing ? await catalog.getArticleBySlug(existing.slug) : null;
+    items.push({
+      facts: f,
+      topic,
+      slug: existing?.slug ?? suggestSlug(f),
+      regenerate: full ? (full.needs_update ? ("needs_update" as const) : ("rewrite" as const)) : undefined,
+    });
   }
   return c.json({ prompt: buildArticleGenerationPrompt(items), count: items.length });
 });

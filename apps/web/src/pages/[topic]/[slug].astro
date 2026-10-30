@@ -45,6 +45,13 @@ const affected = facts.length === 1 ? factsAffected(primary!.packages) : facts.m
 const url = new URL(articleUrl(article), Astro.url.origin).toString();
 const cover = `/covers/${article.slug}.svg`;
 
+const displayPurl = (purl: string) => {
+  try {
+    return decodeURIComponent(purl);
+  } catch {
+    return purl;
+  }
+};
 const epssText = (e: number | null, p: number | null) => (e === null ? "不明" : `${e.toFixed(4)}${p !== null ? `（上位${Math.max(1, Math.round((1 - p) * 100))}%）` : ""}`);
 const kevText = (f: (typeof facts)[number]) => (f.kev ? `掲載（${f.kevAddedAt ? formatIsoDate(f.kevAddedAt) : "日付不明"}）` : "未掲載");
 
@@ -183,7 +190,7 @@ const jsonLd = [
           facts.map((f) => (
             <dl class="facts__grid">
               <div><dt>CVE番号</dt><dd class="mono">{f.id}</dd></div>
-              <div><dt>影響パッケージ</dt><dd class="mono">{f.packages.map((p) => <span class="facts__pkg">{p.purl}</span>)}</dd></div>
+              <div><dt>影響パッケージ</dt><dd class="mono">{f.packages.map((p) => <span class="facts__pkg" title={p.purl}>{displayPurl(p.purl)}</span>)}</dd></div>
               <div><dt>影響バージョン</dt><dd class="mono">{f.packages.map((p) => <span class="facts__pkg">{p.affected}</span>)}</dd></div>
               <div><dt>修正版</dt><dd class="mono">{factsFixed(f.packages).join(", ") || "なし（未修正）"}</dd></div>
               <div><dt>CVSS</dt><dd>{cvssLabel(f.cvss)}{f.cvss && <span class="small muted">　{severityLabel(f.cvss.score)}</span>}</dd></div>

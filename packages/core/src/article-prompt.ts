@@ -1,5 +1,5 @@
 import { ARTICLE_SEPARATOR } from "./article";
-import { cvssLabel, factsAffected, factsFixed, type VulnFacts } from "./facts";
+import { cvssSourceLabel, factsAffected, factsFixed, type VulnFacts } from "./facts";
 import { getTopic, type TopicKey } from "./topics";
 import { RANK_LABELS } from "./scoring";
 
@@ -8,8 +8,8 @@ export interface ArticlePromptItem {
   topic: TopicKey;
   /** 提案するslug（ChatGPTはこのまま使う） */
   slug: string;
-  /** 既存記事の再生成なら true */
-  regenerate?: boolean;
+  /** 既存記事の書き直し。needs_update はソース更新による「要更新」 */
+  regenerate?: "needs_update" | "rewrite";
 }
 
 /** 記事のslugの初期案：`<パッケージ名>-cve-2026-12345` */
@@ -34,7 +34,7 @@ function factsBlock(item: ArticlePromptItem, n: number): string {
   const fixed = factsFixed(f.packages);
   const refs = f.references.slice(0, 15).map((r) => `  - ${r.url}${r.tags.length ? `（${r.tags.join(", ")}）` : ""}`);
   return [
-    `### ${n}. ${f.id}${item.regenerate ? "（再生成：ソースが更新されたため書き直し）" : ""}`,
+    `### ${n}. ${f.id}${item.regenerate === "needs_update" ? "（要更新：ソースが更新されたため書き直し。slug は変えない）" : item.regenerate === "rewrite" ? "（既存記事の書き直し。slug は変えない）" : ""}`,
     `- cve_ids: [${yamlString(f.id)}]`,
     `- slug: ${yamlString(item.slug)}`,
     `- topic: ${yamlString(item.topic)}（${getTopic(item.topic)?.name ?? item.topic}）`,
@@ -42,7 +42,7 @@ function factsBlock(item: ArticlePromptItem, n: number): string {
     `- affected: ${yamlString(affected)}`,
     ...f.packages.map((p) => `  - ${p.purl}: 影響 ${p.affected} ／ 修正版 ${p.fixed.join(", ") || "なし"}`),
     `- fixed: [${fixed.map(yamlString).join(", ")}]`,
-    `- cvss: ${f.cvss ? f.cvss.score.toFixed(1) : "null"}（${cvssLabel(f.cvss)}）`,
+    `- cvss: ${f.cvss ? `${f.cvss.score.toFixed(1)}（${cvssSourceLabel(f.cvss)}）` : "null（未算出）"}`,
     `- EPSS: ${f.epss === null ? "不明" : f.epss.toFixed(4)}`,
     `- KEV: ${f.kev ? `掲載（${f.kevAddedAt ?? "日付不明"}）` : "未掲載"}`,
     `- PoC: ${f.poc ? "あり" : "確認できず"}`,

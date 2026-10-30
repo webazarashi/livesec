@@ -1,0 +1,167 @@
+{
+  "$id": "urn:ichiji-matome:schema:stack:1.0",
+  "title": "一次対応まとめ stack.yaml",
+  "description": "照合・通知のための文脈情報。パッケージの事実は CycloneDX JSON（bom.json）に記載する。バージョンは必ず文字列でクォートする。",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "generated_at": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "generated_by": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "data_sensitivity": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "data_sensitivity"
+      ],
+      "additionalProperties": false
+    },
+    "components": {
+      "minItems": 1,
+      "maxItems": 500,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "exposure": {
+            "type": "string",
+            "enum": [
+              "internet",
+              "internal",
+              "offline"
+            ]
+          },
+          "exposure_reason": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "managed": {
+            "default": false,
+            "type": "boolean"
+          },
+          "sbom": {
+            "description": "CycloneDX JSON のパス",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "image": {
+            "type": "object",
+            "properties": {
+              "purl": {
+                "type": "string",
+                "minLength": 5,
+                "maxLength": 2000
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "根拠ファイル（例：Dockerfile）"
+              }
+            },
+            "required": [
+              "purl"
+            ],
+            "additionalProperties": false
+          },
+          "middleware": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "purl": {
+                  "type": "string",
+                  "minLength": 5,
+                  "maxLength": 2000
+                },
+                "evidence": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500,
+                  "description": "根拠ファイル（例：Dockerfile）"
+                }
+              },
+              "required": [
+                "purl"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "cdn_scripts": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "url": {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "format": "uri"
+                },
+                "evidence": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500,
+                  "description": "根拠ファイル（例：Dockerfile）"
+                }
+              },
+              "required": [
+                "name",
+                "url"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "name",
+          "exposure"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "service",
+    "components"
+  ],
+  "additionalProperties": false
+}

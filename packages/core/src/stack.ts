@@ -155,7 +155,7 @@ export function lintStack(stack: Stack): StackIssue[] {
 export function stackJsonSchema(): Record<string, unknown> {
   const schema = z.toJSONSchema(stackSchema, { target: "draft-2020-12", io: "input", unrepresentable: "any" });
   return {
-    $id: "https://ichiji-matome.workers.dev/schemas/stack.schema.json",
+    $id: "urn:ichiji-matome:schema:stack:1.0",
     title: "一次対応まとめ stack.yaml",
     description: "照合・通知のための文脈情報。パッケージの事実は CycloneDX JSON（bom.json）に記載する。バージョンは必ず文字列でクォートする。",
     ...schema,

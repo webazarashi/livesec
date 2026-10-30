@@ -31,6 +31,15 @@ export interface MatcherDeps {
 
 type PkgKey = { ecosystem: string; name: string; version: string };
 
+/** 画面・Slack 用に PURL の %40 などを戻す */
+function displayPurl(purl: string): string {
+  try {
+    return decodeURIComponent(purl);
+  } catch {
+    return purl;
+  }
+}
+
 /**
  * OSV querybatch で「パッケージ＋バージョン」ごとの該当IDを更新し（9-1）、
  * カタログにない脆弱性の詳細を /v1/vulns/{id} で取得してD1にキャッシュする。
@@ -172,7 +181,7 @@ export async function matchProject(deps: MatcherDeps, repo: TenantRepo, projectI
         ? getWatchlistProduct(c.pkg.name)?.label ?? c.pkg.name
         : c.pkg.source === "cdn"
           ? `${c.pkg.name}（CDN）`
-          : purlWithoutVersion(c.pkg.purl),
+          : displayPurl(purlWithoutVersion(c.pkg.purl)),
       installedVersion: c.pkg.version,
       versionUnknown: c.versionUnknown,
       isDev: c.pkg.is_dev === 1,

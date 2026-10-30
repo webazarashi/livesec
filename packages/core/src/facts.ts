@@ -113,10 +113,13 @@ export function fnv1a64(input: string): string {
   return h.toString(16).padStart(16, "0");
 }
 
+export function cvssSourceLabel(cvss: CvssFact): string {
+  return cvss.source === "ghsa" ? "GHSA深刻度からの代用値" : cvss.source === "cna" ? `CVSS v${cvss.version}・CNA` : `CVSS v${cvss.version}`;
+}
+
 export function cvssLabel(cvss: CvssFact | null): string {
   if (!cvss) return "未算出";
-  const src = cvss.source === "ghsa" ? "GHSA深刻度からの代用値" : cvss.source === "cna" ? `CVSS v${cvss.version}・CNA` : `CVSS v${cvss.version}`;
-  return `${cvss.score.toFixed(1)}（${src}）`;
+  return `${cvss.score.toFixed(1)}（${cvssSourceLabel(cvss)}）`;
 }
 
 export function severityLabel(score: number | null | undefined): string {

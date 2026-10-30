@@ -49,8 +49,8 @@ class ShimStatement {
 
 export class ShimD1 {
   readonly raw: DatabaseSync;
-  constructor() {
-    this.raw = new DatabaseSync(":memory:");
+  constructor(path = ":memory:") {
+    this.raw = new DatabaseSync(path);
     this.raw.exec("PRAGMA foreign_keys = ON;");
   }
 

@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "gen:schema": "tsx scripts/gen-schema.ts"
   },
   "dependencies": {
     "marked": "^18.1.2",
@@ -19,6 +20,7 @@
   "devDependencies": {
     "@types/node": "^22.15.0",
     "typescript": "~6.0.3",
-    "vitest": "^4.1.12"
+    "vitest": "^4.1.12",
+    "tsx": "^4.21.0"
   }
 }
