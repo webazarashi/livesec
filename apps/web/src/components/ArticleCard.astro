@@ -1,0 +1,22 @@
+---
+import type { ArticleSummary } from "@ichiji/db";
+import RankBadge from "./RankBadge.astro";
+import { articleUrl, formatDate, topicLabel } from "../server/format";
+
+interface Props {
+  article: ArticleSummary;
+  showLead?: boolean;
+}
+const { article, showLead = true } = Astro.props;
+---
+
+<a class="card article-card" href={articleUrl(article)}>
+  <span class="article-card__meta">
+    <RankBadge rank={article.general_rank} />
+    <span class="chip chip--topic">{topicLabel(article.topic)}</span>
+    <time datetime={article.published_at}>{formatDate(article.published_at)}</time>
+  </span>
+  <h3 class="article-card__title">{article.title}</h3>
+  {showLead && <p class="article-card__lead">{article.why_read}</p>}
+  <span class="article-card__cve">{article.primary_cve}</span>
+</a>

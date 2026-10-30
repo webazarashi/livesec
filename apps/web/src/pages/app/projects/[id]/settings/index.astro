@@ -1,0 +1,174 @@
+---
+import Base from "../../../../../layouts/Base.astro";
+import AppNav from "../../../../../components/AppNav.astro";
+import { tenantRepoFor } from "../../../../../server/app";
+import { formatDateTime, parseJson } from "../../../../../server/format";
+
+const repo = await tenantRepoFor(Astro.locals);
+const project = await repo.getProject(Astro.params.id ?? "");
+if (!project) return new Response("見つかりません", { status: 404 });
+const [uploads, counts, notifications] = await Promise.all([repo.listUploads(project.id), repo.packageCounts(project.id), repo.listNotifications(project.id)]);
+const origin = Astro.url.origin;
+---
+
+<Base title={`${project.name}｜設定`} noindex>
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/app/">ダッシュボード</a></li><li><a href={`/app/projects/${project.id}/`}>{project.name}</a></li><li aria-current="page">設定</li></ol></nav>
+    <header class="page-head"><p class="eyebrow">PROJECT SETTINGS</p><h1>{project.name}：スタック登録・APIトークン・Slack</h1></header>
+    <AppNav current="dashboard" />
+
+    <section class="card panel" id="stack">
+      <h2>1. スタックを登録する（stack.yaml ＋ SBOM）</h2>
+      <p class="small">
+        先方のAIエージェントに <a href="/templates/agent-prompt.md" target="_blank">配布プロンプト</a> を渡して <code>stack.yaml</code> と SBOM（CycloneDX JSON。cdxgen で生成）を作り、人がレビューしてから登録します。
+        <code>stack.yaml</code> は <a href="/schemas/stack.schema.json" target="_blank">JSON Schema</a> で検証します。バージョンは必ず文字列でクォートしてください。
+      </p>
+      <form class="form" data-stack-upload>
+        <div class="field"><label for="stack">stack.yaml</label><input id="stack" name="stack" type="file" accept=".yaml,.yml,text/yaml" required /></div>
+        <div class="field">
+          <label for="boms">SBOM（CycloneDX JSON。複数可）</label>
+          <input id="boms" name="boms" type="file" accept=".json,application/json" multiple required />
+          <p class="hint">ファイル名は stack.yaml の <code>components[].sbom</code> に書いたパスのファイル名と合わせてください（例：sbom/api-server.cdx.json → api-server.cdx.json）。</p>
+        </div>
+        <button class="btn btn--primary" type="submit">登録して照合する</button>
+        <div class="form-status" role="status" data-stack-status></div>
+        <ul class="small" data-stack-issues></ul>
+      </form>
+      {
+        counts.length > 0 && (
+          <>
+            <h3>登録中の照合対象</h3>
+            <div class="table-scroll">
+              <table class="data">
+                <thead><tr><th>component</th><th>種類</th><th>件数</th><th>うち開発用依存</th></tr></thead>
+                <tbody>{counts.map((c) => <tr><td>{c.component}</td><td>{c.kind === "watch" ? "ミドルウェア・ランタイム（NVD CPE）" : "パッケージ（OSV）"}</td><td>{c.n}</td><td>{c.dev}</td></tr>)}</tbody>
+              </table>
+            </div>
+          </>
+        )
+      }
+      {
+        uploads.length > 0 && (
+          <>
+            <h3>登録履歴</h3>
+            <ul class="small">{uploads.map((u) => {
+              const s = parseJson<{ packages?: number; watched?: number; cdn?: number; warnings?: number }>(u.summary, {});
+              return <li>{formatDateTime(u.uploaded_at)}（{u.via === "api" ? "API" : "画面"}）：パッケージ {s.packages ?? 0}・MW {s.watched ?? 0}・CDN {s.cdn ?? 0}{s.warnings ? `・警告 ${s.warnings}` : ""}</li>;
+            })}</ul>
+          </>
+        )
+      }
+    </section>
+
+    <section class="card panel" id="token">
+      <h2>2. CIから自動送信する（APIトークン）</h2>
+      <p class="small">デプロイごとに CI から送信すると、常に最新のスタックで照合できます。<a href="/templates/github-actions.yml" target="_blank">GitHub Actions のテンプレート</a>を使ってください。トークンはこの画面で一度だけ表示します。</p>
+      <p class="small">現在のトークン：<span class="mono">{project.api_token_hint ?? "未発行"}</span></p>
+      <button class="btn" type="button" data-token>{project.api_token_hint ? "トークンを発行し直す（古いトークンは無効になります）" : "トークンを発行する"}</button>
+      <div data-token-result hidden>
+        <p class="small"><strong>このトークンを CI のシークレット（ICHIJI_API_TOKEN）に保存してください。</strong></p>
+        <p class="token-box" data-token-value></p>
+      </div>
+      <pre class="snippet">{`curl -X POST ${origin}/api/v1/stack \\
+  -H "Authorization: Bearer $ICHIJI_API_TOKEN" \\
+  -F "stack=@stack.yaml" \\
+  -F "sbom/api-server.cdx.json=@sbom/api-server.cdx.json"`}</pre>
+    </section>
+
+    <section class="card panel" id="slack">
+      <h2>3. Slack通知（Incoming Webhook）</h2>
+      <p class="small">S・Aは即時、B以下は毎週月曜09:00（JST）にまとめて届きます。Webhook URL は暗号化して保存します。</p>
+      <p class="small">状態：<strong>{project.has_slack ? "設定済み" : "未設定"}</strong></p>
+      <form class="form" data-slack>
+        <div class="field"><label for="webhook">Webhook URL</label><input id="webhook" name="webhook" type="url" placeholder="https://hooks.slack.com/services/..." autocomplete="off" /></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn--primary" type="submit">保存する</button>
+          <button class="btn" type="button" data-slack-test>テスト通知を送る</button>
+          <button class="btn btn--danger" type="button" data-slack-clear>Webhook を削除</button>
+        </div>
+        <p class="form-status" role="status" data-slack-status></p>
+      </form>
+      {notifications.length > 0 && <ul class="small">{notifications.map((n) => <li>{formatDateTime(n.sent_at)} {n.kind}：{n.ok ? "成功" : "失敗"}{n.detail && `（${n.detail}）`}</li>)}</ul>}
+    </section>
+
+    <section class="card panel">
+      <h2>プロジェクト名・削除</h2>
+      <form class="form" data-rename style="max-width:480px">
+        <div class="field"><label for="pname">プロジェクト名</label><input id="pname" name="name" value={project.name} maxlength="100" required /></div>
+        <div style="display:flex;gap:8px"><button class="btn" type="submit">名前を変更</button><button class="btn btn--danger" type="button" data-delete>プロジェクトを削除</button></div>
+        <p class="form-status" role="status" data-rename-status></p>
+      </form>
+    </section>
+  </div>
+</Base>
+
+<script>
+  import { api, errorMessage, setStatus } from "../../../../../scripts/forms";
+  const projectId = location.pathname.split("/")[3]!;
+
+  const upload = document.querySelector<HTMLFormElement>("[data-stack-upload]")!;
+  upload.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const status = upload.querySelector("[data-stack-status]");
+    const issues = upload.querySelector<HTMLUListElement>("[data-stack-issues]")!;
+    issues.innerHTML = "";
+    const stack = (upload.querySelector<HTMLInputElement>("#stack")!.files ?? [])[0];
+    const boms = [...(upload.querySelector<HTMLInputElement>("#boms")!.files ?? [])];
+    if (!stack) return;
+    const form = new FormData();
+    form.append("stack", stack);
+    for (const f of boms) form.append(f.name, f);
+    setStatus(status, "検証して登録しています…");
+    const r = await api<{ ok: boolean; errors?: Array<{ path: string; message: string }>; warnings?: Array<{ path: string; message: string }>; summary?: { packages: number; watched: number; cdn: number } }>(
+      `/api/projects/${projectId}/stack`,
+      { form },
+    );
+    for (const i of [...(r.data?.errors ?? []), ...(r.data?.warnings ?? [])]) {
+      const li = document.createElement("li");
+      li.textContent = `${i.path ? `${i.path}：` : ""}${i.message}`;
+      issues.appendChild(li);
+    }
+    if (!r.ok || !r.data?.ok) return setStatus(status, "登録できませんでした。下のエラーを直してください。", "error");
+    const s = r.data.summary!;
+    setStatus(status, `登録しました（パッケージ ${s.packages}件・MW ${s.watched}件・CDN ${s.cdn}件）。照合を開始しました。数分後にアラートを確認してください。`, "ok");
+  });
+
+  document.querySelector("[data-token]")?.addEventListener("click", async () => {
+    if (!confirm("トークンを発行します。古いトークンは無効になります。よろしいですか？")) return;
+    const r = await api<{ token: string }>(`/api/projects/${projectId}/token`, { method: "POST" });
+    if (!r.ok) return alert(errorMessage(r.data));
+    document.querySelector<HTMLElement>("[data-token-result]")!.hidden = false;
+    document.querySelector("[data-token-value]")!.textContent = r.data.token;
+  });
+
+  const slack = document.querySelector<HTMLFormElement>("[data-slack]")!;
+  const slackStatus = slack.querySelector("[data-slack-status]");
+  slack.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const r = await api(`/api/projects/${projectId}/slack`, { method: "PUT", body: { webhookUrl: new FormData(slack).get("webhook") } });
+    setStatus(slackStatus, r.ok ? "保存しました" : errorMessage(r.data), r.ok ? "ok" : "error");
+    if (r.ok) (slack.querySelector("#webhook") as HTMLInputElement).value = "";
+  });
+  slack.querySelector("[data-slack-test]")?.addEventListener("click", async () => {
+    const r = await api(`/api/projects/${projectId}/slack/test`, { method: "POST" });
+    setStatus(slackStatus, r.ok ? "テスト通知を送りました" : errorMessage(r.data), r.ok ? "ok" : "error");
+  });
+  slack.querySelector("[data-slack-clear]")?.addEventListener("click", async () => {
+    if (!confirm("Webhook を削除しますか？")) return;
+    const r = await api(`/api/projects/${projectId}/slack`, { method: "PUT", body: { webhookUrl: null } });
+    setStatus(slackStatus, r.ok ? "削除しました" : errorMessage(r.data), r.ok ? "ok" : "error");
+  });
+
+  const rename = document.querySelector<HTMLFormElement>("[data-rename]")!;
+  rename.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const r = await api(`/api/projects/${projectId}`, { method: "PATCH", body: { name: new FormData(rename).get("name") } });
+    setStatus(rename.querySelector("[data-rename-status]"), r.ok ? "変更しました" : errorMessage(r.data), r.ok ? "ok" : "error");
+  });
+  rename.querySelector("[data-delete]")?.addEventListener("click", async () => {
+    if (!confirm("プロジェクトと照合結果・アラートを削除します。元に戻せません。よろしいですか？")) return;
+    const r = await api(`/api/projects/${projectId}`, { method: "DELETE" });
+    if (r.ok) location.href = "/app/";
+    else alert(errorMessage(r.data));
+  });
+</script>

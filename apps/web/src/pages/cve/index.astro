@@ -1,0 +1,85 @@
+---
+import Base from "../../layouts/Base.astro";
+import RankBadge from "../../components/RankBadge.astro";
+import Pagination from "../../components/Pagination.astro";
+import { TOPICS, isTopicKey, severityLabel } from "@ichiji/core";
+import { cacheMediaPage, catalog, pageParam } from "../../server/media";
+import { formatDate, topicLabel } from "../../server/format";
+
+cacheMediaPage(Astro);
+const perPage = 50;
+const page = pageParam(Astro.url);
+const topicParam = Astro.url.searchParams.get("topic") ?? "";
+const topic = isTopicKey(topicParam) ? topicParam : undefined;
+const q = (Astro.url.searchParams.get("q") ?? "").trim().slice(0, 100);
+const repo = catalog();
+const [rows, stats] = await Promise.all([repo.listCatalog({ limit: perPage + 1, offset: (page - 1) * perPage, topic, q: q || undefined }), repo.stats()]);
+const hasNext = rows.length > perPage;
+const list = rows.slice(0, perPage);
+const base = `/cve/?${new URLSearchParams({ ...(topic ? { topic } : {}), ...(q ? { q } : {}) }).toString()}`;
+---
+
+<Base title="CVE DB" description="一次対応まとめが対象範囲として扱うCVEの一覧です。">
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">CVE DB</li></ol></nav>
+    <header class="page-head">
+      <p class="eyebrow">CVE DATABASE</p>
+      <h1>CVE DB</h1>
+      <p class="muted">対象範囲（3章）のCVEだけを掲載しています（{stats.cves.toLocaleString()}件）。範囲外のCVEは載せていません。</p>
+    </header>
+    <form class="cve-filter" method="get" action="/cve/">
+      <select name="topic" aria-label="トピック">
+        <option value="">すべてのトピック</option>
+        {TOPICS.map((t) => <option value={t.key} selected={t.key === topic}>{t.name}</option>)}
+      </select>
+      <input name="q" value={q} placeholder="CVE番号・パッケージ名" aria-label="CVE番号・パッケージ名" />
+      <button class="btn btn--primary" type="submit">絞り込む</button>
+    </form>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr><th>緊急度</th><th>CVE</th><th>トピック</th><th>CVSS</th><th>EPSS</th><th>KEV</th><th>公開日</th><th>記事</th></tr></thead>
+        <tbody>
+          {
+            list.map((r) => (
+              <tr>
+                <td><RankBadge rank={r.general_rank} /></td>
+                <td class="mono">{r.id}</td>
+                <td>{r.topic ? topicLabel(r.topic) : "—"}</td>
+                <td>{r.cvss_score !== null ? `${r.cvss_score.toFixed(1)} ${severityLabel(r.cvss_score)}` : r.ghsa_severity ? `${r.ghsa_severity}（GHSA）` : "—"}</td>
+                <td>{r.epss !== null ? r.epss.toFixed(3) : "—"}</td>
+                <td>{r.kev ? "掲載" : "—"}</td>
+                <td>{formatDate(r.published_at)}</td>
+                <td>{r.article_slug ? <a href={`/${r.article_topic}/${r.article_slug}/`}>読む</a> : <span class="muted small">準備中</span>}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+    {list.length === 0 && <p class="empty">該当するCVEはありません。</p>}
+    <nav class="pagination">
+      {page > 1 && <a class="btn btn--sm" href={`${base}&page=${page - 1}`}>← 前へ</a>}
+      {hasNext && <a class="btn btn--sm" href={`${base}&page=${page + 1}`}>次へ →</a>}
+    </nav>
+  </div>
+</Base>
+
+<style>
+  .cve-filter {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .cve-filter select,
+  .cve-filter input {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    background: var(--paper);
+  }
+  .cve-filter input {
+    flex: 1;
+    min-width: 200px;
+  }
+</style>

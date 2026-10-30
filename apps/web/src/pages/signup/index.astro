@@ -1,0 +1,38 @@
+---
+import Base from "../../layouts/Base.astro";
+---
+
+<Base title="会員登録" noindex>
+  <div class="container">
+    <div class="card auth-box">
+      <h1>会員登録</h1>
+      <p class="small muted">会員になると、記事の Ask AI に「私の環境」が自動で入ります。プロジェクトを登録すると、照合・Slack通知・ダッシュボードが使えます。</p>
+      <form class="form" data-signup>
+        <div class="field"><label for="name">表示名</label><input id="name" name="name" autocomplete="nickname" maxlength="60" required /></div>
+        <div class="field"><label for="email">メールアドレス</label><input id="email" name="email" type="email" autocomplete="email" required /></div>
+        <div class="field">
+          <label for="password">パスワード</label>
+          <input id="password" name="password" type="password" autocomplete="new-password" minlength="10" required />
+          <p class="hint">10文字以上。登録後、アカウント設定から二要素認証（MFA）を有効にしてください。</p>
+        </div>
+        <label class="small"><input type="checkbox" name="agree" required /> <a href="/terms/" target="_blank">利用規約</a>と<a href="/privacy/" target="_blank">プライバシーポリシー</a>に同意します</label>
+        <button class="btn btn--primary" type="submit">登録する</button>
+        <p class="form-status" role="status" data-status></p>
+      </form>
+      <p class="small">登録済みの方は <a href="/login/">ログイン</a></p>
+    </div>
+  </div>
+</Base>
+
+<script>
+  import { api, errorMessage, setStatus } from "../../scripts/forms";
+  const form = document.querySelector<HTMLFormElement>("[data-signup]")!;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(form);
+    setStatus(form.querySelector("[data-status]"), "登録しています…");
+    const r = await api("/api/auth/sign-up/email", { body: { name: f.get("name"), email: f.get("email"), password: f.get("password") } });
+    if (!r.ok) return setStatus(form.querySelector("[data-status]"), errorMessage(r.data), "error");
+    location.href = "/app/settings/?welcome=1";
+  });
+</script>

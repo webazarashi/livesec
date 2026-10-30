@@ -1,0 +1,40 @@
+---
+import type { ArticleSummary } from "@ichiji/db";
+import RankBadge from "./RankBadge.astro";
+import { articleUrl, formatDate, topicLabel } from "../server/format";
+
+interface Props {
+  article: ArticleSummary;
+  index?: number;
+}
+const { article, index } = Astro.props;
+---
+
+<li>
+  <a class="list-row" href={articleUrl(article)}>
+    {index !== undefined && <span class="list-row__index">{index}</span>}
+    <span>
+      <span class="article-card__meta">
+        <RankBadge rank={article.general_rank} />
+        <span class="chip chip--topic">{topicLabel(article.topic)}</span>
+        <time datetime={article.published_at}>{formatDate(article.published_at)}</time>
+      </span>
+      <span class="list-row__title">{article.title}</span>
+    </span>
+  </a>
+</li>
+
+<style>
+  .list-row__index {
+    font-family: var(--mono);
+    font-weight: 800;
+    font-size: 20px;
+    color: var(--brand);
+    min-width: 28px;
+    line-height: 1.4;
+  }
+  .list-row > span:last-child {
+    display: grid;
+    gap: 4px;
+  }
+</style>

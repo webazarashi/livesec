@@ -1,0 +1,33 @@
+---
+import Base from "../layouts/Base.astro";
+import { DATA_SOURCES, SITE } from "@ichiji/core";
+import { cacheMediaPage } from "../server/media";
+cacheMediaPage(Astro, 3600);
+---
+
+<Base title="運営者情報" activeSection="about">
+  <div class="container doc">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">運営者情報</li></ol></nav>
+    <header class="page-head"><p class="eyebrow">ABOUT</p><h1>運営者情報</h1></header>
+    <table>
+      <tbody>
+        <tr><th>サービス名</th><td>{SITE.name}（セキュリティメディア＋会員向けの対応支援SaaS）</td></tr>
+        <tr><th>運営</th><td>{SITE.name}運営事務局</td></tr>
+        <tr><th>編集</th><td>{SITE.editorial}</td></tr>
+        <tr><th>お問い合わせ</th><td><a href="/contact/">お問い合わせ</a></td></tr>
+      </tbody>
+    </table>
+    <h2>{SITE.name}について</h2>
+    <p>{SITE.description}</p>
+    <p>CVEを「知る」で終わらせず、「自社に関係あるか判定 → 直す → 説明する」まで、読者が普段使っているAIで進められるようにすることを目指しています。</p>
+    <h2>対象範囲</h2>
+    <ul>
+      <li>言語パッケージ：npm・PyPI・RubyGems・Packagist・Go</li>
+      <li>コンテナのOSパッケージ：Debian・Alpine など</li>
+      <li>厳選したミドルウェア・ランタイム：nginx、Apache HTTP Server、PostgreSQL、MySQL、MariaDB、Redis、MongoDB、Node.js、Python、Ruby、PHP、Go、OpenSSL、OpenSSH、curl、Docker Engine、Kubernetes</li>
+      <li>注目トピック：LIFF SDK・LINE Messaging API SDK</li>
+    </ul>
+    <h2>データの出典</h2>
+    <ul>{DATA_SOURCES.map((s) => <li><a href={s.url} target="_blank" rel="noopener">{s.name}</a>（{s.license}）</li>)}</ul>
+  </div>
+</Base>

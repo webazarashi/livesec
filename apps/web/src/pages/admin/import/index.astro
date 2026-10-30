@@ -1,0 +1,130 @@
+---
+import Base from "../../../layouts/Base.astro";
+import AppNav from "../../../components/AppNav.astro";
+import { ARTICLE_SEPARATOR } from "@ichiji/core";
+import { CatalogRepo } from "@ichiji/db";
+import { getEnv } from "../../../server/env";
+import { formatDateTime, parseJson } from "../../../server/format";
+
+const drafts = await new CatalogRepo(getEnv().CATALOG_DB).listDrafts(30);
+---
+
+<Base title="管理：記事の取り込み" noindex>
+  <div class="container">
+    <header class="page-head">
+      <p class="eyebrow">ADMIN</p>
+      <h1>記事の取り込み（まとめて貼り付け）</h1>
+      <p class="small muted">ChatGPT の出力を貼り付けます。<code>{ARTICLE_SEPARATOR}</code> で1件ずつに分け、機械照合ゲート（CVE番号・影響バージョン・修正版・CVSS）を通ったものだけ公開します。</p>
+    </header>
+    <AppNav current="admin-import" />
+
+    <form class="form card panel" data-import>
+      <div class="field">
+        <label for="text">ChatGPT の出力</label>
+        <textarea id="text" name="text" rows="18" required placeholder={`${ARTICLE_SEPARATOR}\n---\ncve_ids: ["CVE-2026-XXXXX"]\n...`}></textarea>
+      </div>
+      <div class="field">
+        <label for="note">訂正の場合のメモ（任意。訂正履歴に表示されます）</label>
+        <input id="note" name="note" maxlength="200" placeholder="例：修正版の記載を訂正しました" />
+      </div>
+      <button class="btn btn--primary" type="submit">照合して公開する</button>
+      <p class="form-status" role="status" data-status></p>
+    </form>
+
+    <section class="section" data-results hidden>
+      <h2>結果</h2>
+      <div class="table-scroll">
+        <table class="data">
+          <thead><tr><th>#</th><th>slug</th><th>CVE</th><th>結果</th><th>詳細</th></tr></thead>
+          <tbody data-results-body></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>差し戻し（直近）</h2>
+      {
+        drafts.length ? (
+          <div class="table-scroll">
+            <table class="data">
+              <thead><tr><th>日時</th><th>slug</th><th>理由</th><th></th></tr></thead>
+              <tbody>
+                {drafts.map((d) => (
+                  <tr>
+                    <td class="small">{formatDateTime(d.created_at)}</td>
+                    <td class="mono small">{d.slug ?? "—"}<div>{parseJson<string[]>(d.cve_ids, []).join(", ")}</div></td>
+                    <td class="small"><ul style="margin:0;padding-left:1.1em">{parseJson<string[]>(d.errors, []).map((e) => <li>{e}</li>)}</ul></td>
+                    <td><button class="btn btn--sm" type="button" data-load-draft={d.id}>貼り付け欄に戻す</button> <button class="btn btn--sm btn--danger" type="button" data-delete-draft={d.id}>削除</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p class="empty">差し戻しはありません。</p>
+        )
+      }
+    </section>
+  </div>
+</Base>
+
+<script>
+  import { api, errorMessage, setStatus } from "../../../scripts/forms";
+  type Result = { index: number; slug: string | null; cveIds: string[]; status: string; url?: string; errors?: string[]; mismatches?: Array<{ message: string; expected: string; actual: string }> };
+  const form = document.querySelector<HTMLFormElement>("[data-import]")!;
+  const textarea = form.querySelector<HTMLTextAreaElement>("textarea")!;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(form);
+    const status = form.querySelector("[data-status]");
+    setStatus(status, "照合しています…");
+    const r = await api<{ results: Result[] }>("/api/admin/import", { body: { text: f.get("text"), correctionNote: f.get("note") } });
+    if (!r.ok) return setStatus(status, errorMessage(r.data), "error");
+    const body = document.querySelector("[data-results-body]")!;
+    body.innerHTML = "";
+    for (const res of r.data.results) {
+      const tr = document.createElement("tr");
+      const cells = [String(res.index + 1), res.slug ?? "—", res.cveIds.join(", "), res.status === "published" ? "公開" : res.status === "updated" ? "更新" : "差し戻し"];
+      for (const c of cells) {
+        const td = document.createElement("td");
+        td.textContent = c;
+        tr.appendChild(td);
+      }
+      const detail = document.createElement("td");
+      detail.className = "small";
+      if (res.url) {
+        const a = document.createElement("a");
+        a.href = res.url;
+        a.textContent = res.url;
+        a.target = "_blank";
+        detail.appendChild(a);
+      }
+      for (const m of [...(res.errors ?? []), ...(res.mismatches ?? []).map((x) => `${x.message}（期待：${x.expected} ／ 記事：${x.actual}）`)]) {
+        const div = document.createElement("div");
+        div.textContent = m;
+        div.style.color = "var(--rank-s)";
+        detail.appendChild(div);
+      }
+      tr.appendChild(detail);
+      body.appendChild(tr);
+    }
+    document.querySelector<HTMLElement>("[data-results]")!.hidden = false;
+    const ok = r.data.results.filter((x) => x.status !== "rejected").length;
+    setStatus(status, `公開・更新 ${ok}件 ／ 差し戻し ${r.data.results.length - ok}件`, ok ? "ok" : "error");
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-load-draft]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const r = await api<{ raw: string }>(`/api/admin/drafts/${b.dataset.loadDraft}`);
+      if (r.ok) {
+        textarea.value = `=====ARTICLE=====\n${r.data.raw}`;
+        textarea.focus();
+      }
+    }),
+  );
+  document.querySelectorAll<HTMLButtonElement>("[data-delete-draft]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await api(`/api/admin/drafts/${b.dataset.deleteDraft}`, { method: "DELETE" });
+      b.closest("tr")?.remove();
+    }),
+  );
+</script>

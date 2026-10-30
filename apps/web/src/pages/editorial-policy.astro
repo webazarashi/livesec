@@ -1,0 +1,38 @@
+---
+import Base from "../layouts/Base.astro";
+import { DEFAULT_SCORING_CONFIG as c, SITE } from "@ichiji/core";
+import { cacheMediaPage } from "../server/media";
+cacheMediaPage(Astro, 3600);
+---
+
+<Base title="エディトリアルポリシー">
+  <div class="container doc">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">エディトリアルポリシー</li></ol></nav>
+    <header class="page-head"><p class="eyebrow">EDITORIAL POLICY</p><h1>エディトリアルポリシー</h1></header>
+    <h2>基本方針</h2>
+    <ul>
+      <li><strong>一次ソースで照合</strong>：OSV・NVD・CISA KEV・FIRST EPSS の一次ソースをもとに、事実データ（CVE番号・影響パッケージ・影響バージョン・修正版・CVSS・EPSS・KEV）を作ります。</li>
+      <li><strong>機械照合を通ったものだけ公開</strong>：記事中のCVE番号・影響バージョン・修正版・CVSSをソースデータと機械的に突き合わせ、1つでも一致しない記事は公開しません。</li>
+      <li><strong>参照ソースを明記</strong>：記事ごとに引用元のURLを載せます。記事の「事実データ」欄は本文ではなく、照合済みのデータベースの値を表示します。</li>
+      <li><strong>更新と訂正</strong>：ソースが更新されたら記事を見直します。更新・訂正の内容は記事末尾の「訂正履歴」に残します。</li>
+    </ul>
+    <h2 id="rank">一般緊急度の判定基準</h2>
+    <p>判定は機械的な条件だけで行い、上から順に最初に当てはまったランクにします。</p>
+    <table>
+      <thead><tr><th>ランク</th><th>意味</th><th>条件（いずれか）</th></tr></thead>
+      <tbody>
+        <tr><td>S</td><td>今すぐ対応</td><td>CISA KEV 掲載／PoCあり かつ CVSS {c.S.pocMinCvss.toFixed(1)}以上／EPSS {c.S.minEpss}以上 かつ CVSS {c.S.epssMinCvss.toFixed(1)}以上</td></tr>
+        <tr><td>A</td><td>24時間以内</td><td>CVSS {c.A.minCvss.toFixed(1)}以上／CVSS {c.A.signalMinCvss.toFixed(1)}以上 かつ（PoCあり または EPSS {c.A.signalMinEpss}以上）</td></tr>
+        <tr><td>B</td><td>次の定期保守</td><td>CVSS {c.B.minCvss.toFixed(1)}以上／CVSS {c.B.signalMinCvss.toFixed(1)}以上 かつ（PoCあり または EPSS {c.B.signalMinEpss}以上）</td></tr>
+        <tr><td>C</td><td>記録のみ</td><td>上記以外</td></tr>
+      </tbody>
+    </table>
+    <p class="small muted">
+      CVSS は NVD の基本値（v3.1 を優先し、なければ v4.0）。どちらも未算出のときは GHSA の深刻度で代用します（Critical=9.0／High=7.0／Moderate=4.0／Low=1.0）。PoC は、参照URLに exploit タグが付いたもの、または Exploit-DB・Metasploit 等へのリンクがあるものです。S は悪用の兆候（KEV・PoC・高いEPSS）があるものだけです。
+    </p>
+    <h2>記事の作り方</h2>
+    <p>{SITE.editorial}が、照合済みの事実データをもとに記事を作成しています。本文は読みやすさのために要約・再構成しており、CVEの説明文などの原文はそのまま載せていません。</p>
+    <h2>誤りを見つけたら</h2>
+    <p>記事の誤りは <a href="/contact/?type=correction">お問い合わせ</a> からお知らせください。確認のうえ訂正し、訂正履歴に残します。</p>
+  </div>
+</Base>

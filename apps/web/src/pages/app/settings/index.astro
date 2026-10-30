@@ -1,0 +1,165 @@
+---
+import Base from "../../../layouts/Base.astro";
+import AppNav from "../../../components/AppNav.astro";
+import { AccountRepo } from "@ichiji/db";
+import { DISCLAIMERS, MY_ENVIRONMENT_MAX_CHARS, MY_ENVIRONMENT_TEMPLATE } from "@ichiji/core";
+import { getEnv } from "../../../server/env";
+import { formatDateTime } from "../../../server/format";
+
+const user = Astro.locals.user!;
+const myEnv = await new AccountRepo(getEnv().APP_DB).getMyEnvironment(user.id);
+const welcome = Astro.url.searchParams.get("welcome") === "1";
+---
+
+<Base title="アカウント設定・私の環境" noindex>
+  <div class="container">
+    <header class="page-head"><p class="eyebrow">SETTINGS</p><h1>アカウント設定・私の環境</h1><p class="small muted">{user.email}</p></header>
+    <AppNav current="settings" />
+    {welcome && <p class="notice">会員登録が完了しました。「私の環境」を書いておくと、記事の Ask AI に自動で入ります。あわせて二要素認証（MFA）も有効にしてください。</p>}
+
+    <section class="card panel" id="my-environment">
+      <h2>私の環境（Ask AI に自動で入ります）</h2>
+      <p class="notice notice--warn small">{DISCLAIMERS.myEnvironment}</p>
+      <form class="form" data-env>
+        <div class="field">
+          <label for="env">私の環境（{MY_ENVIRONMENT_MAX_CHARS}文字まで）</label>
+          <textarea id="env" name="text" maxlength={MY_ENVIRONMENT_MAX_CHARS} rows="5" placeholder={MY_ENVIRONMENT_TEMPLATE}>{myEnv.text}</textarea>
+          <p class="hint">例：Ubuntu 24.04 のコンテナ。Node.js 20 / Next.js 14 / express 4.18 / PostgreSQL 16（RDS）。APIはインターネットに公開、管理画面はVPN内のみ。<span data-count></span></p>
+        </div>
+        <button class="btn btn--primary" type="submit">保存する</button>
+        <p class="small muted">最終更新：{formatDateTime(myEnv.updatedAt)}</p>
+        <p class="form-status" role="status" data-env-status></p>
+      </form>
+    </section>
+
+    <section class="card panel" id="mfa">
+      <h2>二要素認証（MFA）</h2>
+      <p class="small">状態：<strong>{user.twoFactorEnabled ? "有効" : "無効"}</strong></p>
+      {
+        user.twoFactorEnabled ? (
+          <form class="form" data-mfa-disable style="max-width:420px">
+            <div class="field"><label for="pw-disable">パスワード</label><input id="pw-disable" name="password" type="password" autocomplete="current-password" required /></div>
+            <button class="btn btn--danger" type="submit">二要素認証を無効にする</button>
+            <p class="form-status" role="status" data-mfa-status></p>
+          </form>
+        ) : (
+          <>
+            <form class="form" data-mfa-enable style="max-width:420px">
+              <div class="field"><label for="pw-enable">パスワード</label><input id="pw-enable" name="password" type="password" autocomplete="current-password" required /></div>
+              <button class="btn btn--primary" type="submit">二要素認証を設定する</button>
+              <p class="form-status" role="status" data-mfa-status></p>
+            </form>
+            <div data-mfa-setup hidden>
+              <p class="small">認証アプリ（Google Authenticator・1Password など）で、次のキーを登録してください。</p>
+              <p class="token-box" data-mfa-secret></p>
+              <p class="small muted">otpauth URI：<span class="mono" data-mfa-uri></span></p>
+              <p class="small"><strong>バックアップコード</strong>（認証アプリを使えないときに1回ずつ使えます。安全な場所に保管してください）</p>
+              <p class="token-box" data-mfa-backup></p>
+              <form class="form" data-mfa-verify style="max-width:420px">
+                <div class="field"><label for="code">認証アプリの6桁のコード</label><input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required /></div>
+                <button class="btn btn--primary" type="submit">確認して有効にする</button>
+                <p class="form-status" role="status" data-mfa-verify-status></p>
+              </form>
+            </div>
+          </>
+        )
+      }
+    </section>
+
+    <section class="card panel">
+      <h2>パスワードの変更</h2>
+      <form class="form" data-password style="max-width:420px">
+        <div class="field"><label for="cur">現在のパスワード</label><input id="cur" name="current" type="password" autocomplete="current-password" required /></div>
+        <div class="field"><label for="new">新しいパスワード（10文字以上）</label><input id="new" name="next" type="password" autocomplete="new-password" minlength="10" required /></div>
+        <button class="btn" type="submit">変更する（他の端末のセッションは失効します）</button>
+        <p class="form-status" role="status" data-pw-status></p>
+      </form>
+    </section>
+
+    <section class="card panel">
+      <h2>ログイン中の端末（セッション）</h2>
+      <ul class="small" data-sessions><li class="muted">読み込み中…</li></ul>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" type="button" data-revoke-others>他の端末をすべてログアウト</button>
+        <button class="btn" type="button" data-signout>この端末でログアウト</button>
+      </div>
+      <p class="form-status" role="status" data-session-status></p>
+    </section>
+  </div>
+</Base>
+
+<script>
+  import { api, errorMessage, setStatus } from "../../../scripts/forms";
+
+  const envForm = document.querySelector<HTMLFormElement>("[data-env]")!;
+  const envArea = envForm.querySelector<HTMLTextAreaElement>("textarea")!;
+  const count = envForm.querySelector("[data-count]")!;
+  const updateCount = () => (count.textContent = `（${[...envArea.value].length}/${envArea.maxLength}文字）`);
+  envArea.addEventListener("input", updateCount);
+  updateCount();
+  envForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const r = await api("/api/me/environment", { method: "PUT", body: { text: envArea.value } });
+    setStatus(envForm.querySelector("[data-env-status]"), r.ok ? "保存しました。記事の Ask AI に自動で入ります。" : errorMessage(r.data), r.ok ? "ok" : "error");
+  });
+
+  const enable = document.querySelector<HTMLFormElement>("[data-mfa-enable]");
+  enable?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const r = await api<{ totpURI: string; backupCodes: string[] }>("/api/auth/two-factor/enable", { body: { password: new FormData(enable).get("password") } });
+    if (!r.ok) return setStatus(enable.querySelector("[data-mfa-status]"), errorMessage(r.data), "error");
+    const uri = r.data.totpURI;
+    const secret = new URL(uri).searchParams.get("secret") ?? "";
+    document.querySelector("[data-mfa-secret]")!.textContent = secret.replace(/(.{4})/g, "$1 ").trim();
+    document.querySelector("[data-mfa-uri]")!.textContent = uri;
+    document.querySelector("[data-mfa-backup]")!.textContent = r.data.backupCodes.join("  ");
+    document.querySelector<HTMLElement>("[data-mfa-setup]")!.hidden = false;
+    enable.hidden = true;
+  });
+  const verify = document.querySelector<HTMLFormElement>("[data-mfa-verify]");
+  verify?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const r = await api("/api/auth/two-factor/verify-totp", { body: { code: new FormData(verify).get("code") } });
+    if (!r.ok) return setStatus(verify.querySelector("[data-mfa-verify-status]"), errorMessage(r.data), "error");
+    setStatus(verify.querySelector("[data-mfa-verify-status]"), "二要素認証を有効にしました", "ok");
+    setTimeout(() => location.reload(), 800);
+  });
+  const disable = document.querySelector<HTMLFormElement>("[data-mfa-disable]");
+  disable?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!confirm("二要素認証を無効にしますか？")) return;
+    const r = await api("/api/auth/two-factor/disable", { body: { password: new FormData(disable).get("password") } });
+    if (!r.ok) return setStatus(disable.querySelector("[data-mfa-status]"), errorMessage(r.data), "error");
+    location.reload();
+  });
+
+  const pw = document.querySelector<HTMLFormElement>("[data-password]")!;
+  pw.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(pw);
+    const r = await api("/api/auth/change-password", { body: { currentPassword: f.get("current"), newPassword: f.get("next"), revokeOtherSessions: true } });
+    setStatus(pw.querySelector("[data-pw-status]"), r.ok ? "変更しました。他の端末のセッションは失効しました。" : errorMessage(r.data), r.ok ? "ok" : "error");
+    if (r.ok) pw.reset();
+  });
+
+  const list = document.querySelector<HTMLUListElement>("[data-sessions]")!;
+  async function loadSessions() {
+    const r = await api<Array<{ id: string; createdAt: string; userAgent?: string | null; ipAddress?: string | null }>>("/api/auth/list-sessions");
+    list.innerHTML = "";
+    for (const s of r.ok && Array.isArray(r.data) ? r.data : []) {
+      const li = document.createElement("li");
+      li.textContent = `${new Date(s.createdAt).toLocaleString("ja-JP")}　${(s.userAgent ?? "不明な端末").slice(0, 80)}`;
+      list.appendChild(li);
+    }
+  }
+  void loadSessions();
+  document.querySelector("[data-revoke-others]")?.addEventListener("click", async () => {
+    const r = await api("/api/auth/revoke-other-sessions", { method: "POST", body: {} });
+    setStatus(document.querySelector("[data-session-status]"), r.ok ? "他の端末をログアウトしました" : errorMessage(r.data), r.ok ? "ok" : "error");
+    void loadSessions();
+  });
+  document.querySelector("[data-signout]")?.addEventListener("click", async () => {
+    await api("/api/auth/sign-out", { method: "POST", body: {} });
+    location.href = "/";
+  });
+</script>

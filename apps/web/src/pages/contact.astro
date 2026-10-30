@@ -1,0 +1,28 @@
+---
+import Base from "../layouts/Base.astro";
+const type = Astro.url.searchParams.get("type");
+const url = Astro.url.searchParams.get("url") ?? "";
+const safeUrl = /^https?:\/\//.test(url) ? url.slice(0, 500) : "";
+---
+
+<Base title="お問い合わせ" noindex>
+  <div class="container doc">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">お問い合わせ</li></ol></nav>
+    <header class="page-head"><p class="eyebrow">CONTACT</p><h1>{type === "correction" ? "誤りを知らせる" : "お問い合わせ"}</h1></header>
+    <p>お問い合わせ・記事の誤りのご連絡は、下記のメールアドレスまでお送りください。</p>
+    <p class="notice"><strong>contact@ichiji-matome.example</strong><br /><span class="small muted">（運用開始前に実際の窓口に置き換えてください）</span></p>
+    {
+      type === "correction" && (
+        <>
+          <h2>誤りのご連絡に書いていただきたいこと</h2>
+          <ul>
+            <li>記事のURL{safeUrl && <>：<span class="mono">{safeUrl}</span></>}</li>
+            <li>誤っている箇所と、正しいと思われる内容</li>
+            <li>根拠となる一次情報（公式アドバイザリ等）のURL</li>
+          </ul>
+        </>
+      )
+    }
+    <p class="small muted">APIキー・社内のURL・個人情報は書かないでください。</p>
+  </div>
+</Base>

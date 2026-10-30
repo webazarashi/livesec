@@ -1,0 +1,127 @@
+---
+import Base from "../../layouts/Base.astro";
+import AppNav from "../../components/AppNav.astro";
+import RankBadge from "../../components/RankBadge.astro";
+import { CatalogRepo } from "@ichiji/db";
+import { getEnv } from "../../server/env";
+import { formatDate, topicLabel } from "../../server/format";
+
+const perPage = 200;
+const page = Math.max(1, Number.parseInt(Astro.url.searchParams.get("page") ?? "1", 10) || 1);
+const repo = new CatalogRepo(getEnv().CATALOG_DB);
+const [pending, total, windowStart, ingest] = await Promise.all([
+  repo.listPendingCves(perPage, (page - 1) * perPage),
+  repo.countPendingCves(),
+  repo.getMeta("window_start"),
+  getEnv().CATALOG_DB.prepare("SELECT source, cursor, updated_at, detail FROM ingest_state ORDER BY source").all<{ source: string; cursor: string | null; updated_at: string; detail: string | null }>(),
+]);
+---
+
+<Base title="管理：記事待ちCVE" noindex>
+  <div class="container">
+    <header class="page-head">
+      <p class="eyebrow">ADMIN</p>
+      <h1>記事待ちCVE一覧</h1>
+      <p class="small muted">対象範囲のCVEのうち、記事がないもの・ソース更新で「要更新」になったもの（{total}件）。緊急度順。掲載期間の開始：{formatDate(windowStart)}</p>
+    </header>
+    <AppNav current="admin" />
+
+    <ol class="small flow">
+      <li>記事にするCVEを選び「記事生成プロンプトをコピー」</li>
+      <li>ChatGPT に貼って生成（1回に10件程度がおすすめ）</li>
+      <li>出力をまとめて <a href="/admin/import/">取り込み</a> に貼り付け → 機械照合を通ったものだけ公開</li>
+    </ol>
+
+    <div class="toolbar">
+      <button class="btn btn--sm" type="button" data-select="10">上から10件を選ぶ</button>
+      <button class="btn btn--sm" type="button" data-select="0">選択を解除</button>
+      <button class="btn btn--primary" type="button" data-copy-prompt>記事生成プロンプトをコピー（<span data-selected-count>0</span>件）</button>
+      <span class="form-status" role="status" data-status></span>
+    </div>
+
+    {
+      pending.length ? (
+        <div class="table-scroll">
+          <table class="data">
+            <thead><tr><th><span class="visually-hidden">選択</span></th><th>緊急度</th><th>CVE</th><th>トピック</th><th>公開日</th><th>状態</th><th>概要（ソース）</th></tr></thead>
+            <tbody>
+              {pending.map((p) => (
+                <tr>
+                  <td><input type="checkbox" data-cve={p.id} aria-label={`${p.id} を選ぶ`} /></td>
+                  <td><RankBadge rank={p.general_rank} /></td>
+                  <td class="mono">{p.id}</td>
+                  <td>{topicLabel(p.topic)}</td>
+                  <td>{formatDate(p.published_at)}</td>
+                  <td>{p.needs_update ? <span class="chip" style="border-color:var(--rank-a);color:var(--rank-a)">要更新</span> : <span class="chip">未作成</span>}{p.article_slug && <div class="small mono">{p.article_slug}</div>}</td>
+                  <td class="small muted">{(p.summary ?? "").slice(0, 120)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p class="empty">記事待ちのCVEはありません。</p>
+      )
+    }
+    <nav class="pagination">
+      {page > 1 && <a class="btn btn--sm" href={`?page=${page - 1}`}>← 前へ</a>}
+      {page * perPage < total && <a class="btn btn--sm" href={`?page=${page + 1}`}>次へ →</a>}
+    </nav>
+
+    <section class="section">
+      <h2>取り込みの状態</h2>
+      <div class="table-scroll">
+        <table class="data">
+          <thead><tr><th>ソース</th><th>カーソル</th><th>更新</th><th>メモ</th></tr></thead>
+          <tbody>{ingest.results.map((s) => <tr><td>{s.source}</td><td class="mono small">{s.cursor}</td><td>{formatDate(s.updated_at)}</td><td class="small">{s.detail}</td></tr>)}</tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</Base>
+
+<script>
+  import { api, errorMessage, setStatus } from "../../scripts/forms";
+  import { copyText } from "../../scripts/site";
+  const boxes = [...document.querySelectorAll<HTMLInputElement>("[data-cve]")];
+  const countEl = document.querySelector("[data-selected-count]")!;
+  const update = () => (countEl.textContent = String(boxes.filter((b) => b.checked).length));
+  boxes.forEach((b) => b.addEventListener("change", update));
+  document.querySelectorAll<HTMLButtonElement>("[data-select]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const n = Number(btn.dataset.select);
+      boxes.forEach((b, i) => (b.checked = i < n));
+      update();
+    }),
+  );
+  document.querySelector("[data-copy-prompt]")?.addEventListener("click", async () => {
+    const ids = boxes.filter((b) => b.checked).map((b) => b.dataset.cve!);
+    const status = document.querySelector("[data-status]");
+    if (!ids.length) return setStatus(status, "CVEを選んでください", "error");
+    if (ids.length > 30) return setStatus(status, "一度に選べるのは30件までです", "error");
+    const r = await api<{ prompt: string; count: number }>("/api/admin/prompt", { body: { cveIds: ids } });
+    if (!r.ok) return setStatus(status, errorMessage(r.data), "error");
+    const ok = await copyText(r.data.prompt);
+    setStatus(status, ok ? `${r.data.count}件分のプロンプトをコピーしました。ChatGPTに貼り付けてください。` : "コピーできませんでした", ok ? "ok" : "error");
+  });
+</script>
+
+<style>
+  .flow {
+    background: var(--brand-soft-2);
+    border-radius: var(--radius-sm);
+    padding: 10px 10px 10px 32px;
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 0;
+    position: sticky;
+    top: 110px;
+    background: var(--bg);
+    padding: 8px 0;
+    z-index: 5;
+  }
+</style>

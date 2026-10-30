@@ -1,0 +1,50 @@
+---
+import Base from "../../layouts/Base.astro";
+import ArticleCard from "../../components/ArticleCard.astro";
+import { catalog } from "../../server/media";
+
+const q = (Astro.url.searchParams.get("q") ?? "").trim().slice(0, 100);
+const repo = catalog();
+const results = q ? await repo.searchArticles(q) : [];
+const cves = q ? await repo.listCatalog({ limit: 20, q }) : [];
+const pendingCves = cves.filter((c) => !c.article_slug);
+---
+
+<Base title={q ? `「${q}」の検索結果` : "検索"} noindex>
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">検索</li></ol></nav>
+    <header class="page-head">
+      <p class="eyebrow">SEARCH</p>
+      <h1>CVE・パッケージ名で探す</h1>
+      <form class="search-page" action="/search/" method="get" role="search">
+        <input name="q" type="search" value={q} placeholder="例：CVE-2026-12345、express、nginx" aria-label="検索語" autofocus />
+        <button class="btn btn--primary" type="submit">検索</button>
+      </form>
+    </header>
+    {q && <p class="muted">「{q}」の記事：{results.length}件</p>}
+    {results.length > 0 && <div class="cards">{results.map((a) => <ArticleCard article={a} />)}</div>}
+    {q && results.length === 0 && <p class="empty">記事が見つかりませんでした。CVE番号の場合は <a href={`/cve/?q=${encodeURIComponent(q)}`}>CVE DB</a> も確認してください。</p>}
+    {
+      pendingCves.length > 0 && (
+        <section class="section">
+          <h2>記事準備中のCVE</h2>
+          <ul>{pendingCves.map((c) => <li class="mono">{c.id}</li>)}</ul>
+        </section>
+      )
+    }
+  </div>
+</Base>
+
+<style>
+  .search-page {
+    display: flex;
+    gap: 8px;
+    max-width: 640px;
+  }
+  .search-page input {
+    flex: 1;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+  }
+</style>

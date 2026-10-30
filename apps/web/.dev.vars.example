@@ -1,0 +1,7 @@
+# ローカル開発用（cp .dev.vars.example .dev.vars）
+PUBLIC_BASE_URL=http://localhost:4321
+ADMIN_EMAILS=admin@example.com
+BETTER_AUTH_SECRET=dev-secret-change-me-dev-secret-change-me
+# 32バイトのbase64（openssl rand -base64 32）
+WEBHOOK_ENC_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+INTERNAL_TOKEN=dev-internal-token

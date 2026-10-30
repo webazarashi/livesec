@@ -1,0 +1,25 @@
+---
+import Base from "../../layouts/Base.astro";
+import ArticleCard from "../../components/ArticleCard.astro";
+import Pagination from "../../components/Pagination.astro";
+import { cacheMediaPage, catalog, pageParam } from "../../server/media";
+
+cacheMediaPage(Astro);
+const perPage = 24;
+const page = pageParam(Astro.url);
+const repo = catalog();
+const [articles, total] = await Promise.all([repo.listArticles({ limit: perPage, offset: (page - 1) * perPage }), repo.countArticles()]);
+---
+
+<Base title="記事一覧" activeSection="articles">
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">記事一覧</li></ol></nav>
+    <header class="page-head">
+      <p class="eyebrow">ARTICLES</p>
+      <h1>記事一覧</h1>
+      <p class="muted">全{total}本。新しい順に並んでいます。</p>
+    </header>
+    {articles.length ? <div class="cards">{articles.map((a) => <ArticleCard article={a} />)}</div> : <p class="empty">記事は準備中です。</p>}
+    <Pagination page={page} total={total} perPage={perPage} baseHref="/articles/" />
+  </div>
+</Base>

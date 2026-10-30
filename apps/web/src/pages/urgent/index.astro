@@ -1,0 +1,53 @@
+---
+import Base from "../../layouts/Base.astro";
+import ArticleCard from "../../components/ArticleCard.astro";
+import RankBadge from "../../components/RankBadge.astro";
+import Pagination from "../../components/Pagination.astro";
+import { RANK_LABELS } from "@ichiji/core";
+import { cacheMediaPage, catalog, pageParam } from "../../server/media";
+import { formatDate, topicLabel } from "../../server/format";
+
+cacheMediaPage(Astro);
+const perPage = 24;
+const page = pageParam(Astro.url);
+const repo = catalog();
+const [articles, total, pending] = await Promise.all([
+  repo.listArticles({ limit: perPage, offset: (page - 1) * perPage, ranks: ["S", "A"] }),
+  repo.countArticles({ ranks: ["S", "A"] }),
+  repo.listPendingCves(50),
+]);
+const pendingUrgent = pending.filter((p) => (p.general_rank === "S" || p.general_rank === "A") && !p.article_slug);
+---
+
+<Base title="緊急（一般緊急度 S・A）" activeSection="urgent">
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">緊急（S・A）</li></ol></nav>
+    <header class="page-head">
+      <p class="eyebrow">URGENT</p>
+      <h1>緊急（一般緊急度 S・A）</h1>
+      <p class="muted">
+        S：{RANK_LABELS.S.meaning}（悪用の兆候＝KEV掲載・PoC・高いEPSSがあるもの）／ A：{RANK_LABELS.A.meaning}。判定は機械的な条件だけで行っています。<a href="/editorial-policy/#rank">判定基準</a>
+      </p>
+    </header>
+    {articles.length ? <div class="cards">{articles.map((a) => <ArticleCard article={a} />)}</div> : <p class="empty">現在、一般緊急度 S・A の記事はありません。</p>}
+    <Pagination page={page} total={total} perPage={perPage} baseHref="/urgent/" />
+
+    {
+      pendingUrgent.length > 0 && (
+        <section class="section">
+          <div class="section__head"><h2 class="section__title"><span class="eyebrow">IN PROGRESS</span><span>記事準備中の S・A</span></h2></div>
+          <div class="table-scroll">
+            <table class="data">
+              <thead><tr><th>緊急度</th><th>CVE</th><th>トピック</th><th>公開日</th></tr></thead>
+              <tbody>
+                {pendingUrgent.map((p) => (
+                  <tr><td><RankBadge rank={p.general_rank} /></td><td class="mono">{p.id}</td><td>{topicLabel(p.topic)}</td><td>{formatDate(p.published_at)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )
+    }
+  </div>
+</Base>

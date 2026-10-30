@@ -1,0 +1,389 @@
+---
+import Base from "../layouts/Base.astro";
+import ArticleCard from "../components/ArticleCard.astro";
+import ArticleRow from "../components/ArticleRow.astro";
+import SectionHead from "../components/SectionHead.astro";
+import RankBadge from "../components/RankBadge.astro";
+import { SITE, TOPICS } from "@ichiji/core";
+import { cacheMediaPage, catalog } from "../server/media";
+import { articleUrl, formatDate, topicLabel } from "../server/format";
+
+cacheMediaPage(Astro);
+const repo = catalog();
+const [stats, urgent, pinned, latest, total, popular24, popular30, counts] = await Promise.all([
+  repo.stats(),
+  repo.listArticles({ limit: 6, ranks: ["S", "A"] }),
+  repo.listArticles({ limit: 4, pinned: true }),
+  repo.listArticles({ limit: 12 }),
+  repo.countArticles(),
+  repo.popularArticles("24h", 5),
+  repo.popularArticles("30d", 5),
+  repo.countByTopic(),
+]);
+const byTopic = await Promise.all(TOPICS.map(async (t) => ({ topic: t, articles: await repo.listArticles({ limit: 3, topic: t.key }) })));
+const [lead, ...restUrgent] = urgent;
+
+const purposes = [
+  { no: "01", title: "探す", text: "CVE番号・パッケージ名で検索", href: "/search/" },
+  { no: "02", title: "判定する", text: "うちには必要？をAIに相談", href: "/urgent/" },
+  { no: "03", title: "確かめる", text: "自環境の確認コマンド", href: "/articles/" },
+  { no: "04", title: "直す", text: "優先順の対応手順", href: "/articles/" },
+  { no: "05", title: "追う", text: "新着・緊急（S・A）", href: "/urgent/" },
+];
+---
+
+<Base>
+  <section class="hero">
+    <div class="container hero__inner">
+      <div>
+        <p class="eyebrow">CVE FIRST RESPONSE</p>
+        <h1 class="hero__copy">{SITE.heroCopy}</h1>
+        <p class="hero__lead">{SITE.heroLead}</p>
+        <form class="hero__search" action="/search/" method="get" role="search">
+          <label class="visually-hidden" for="hero-q">CVE・パッケージ名で検索</label>
+          <input id="hero-q" name="q" type="search" placeholder="例：CVE-2026-12345、express、nginx" />
+          <button class="btn btn--primary" type="submit">検索</button>
+        </form>
+      </div>
+      <dl class="hero__stats">
+        <div><dt>掲載CVE数</dt><dd>{stats.cves.toLocaleString()}<small>件</small></dd></div>
+        <div><dt>対象トピック</dt><dd>{TOPICS.length}<small>分野</small></dd></div>
+        <div><dt>今週のS・A</dt><dd>{stats.weekUrgent}<small>件</small></dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <div class="container">
+    <section class="section" aria-labelledby="urgent-title">
+      <SectionHead eyebrow="URGENT" title="緊急トップ（一般緊急度 S・A）" moreHref="/urgent/" moreLabel="緊急の記事をすべて見る" id="urgent-title" />
+      {
+        lead ? (
+          <div class="urgent">
+            <a class="card urgent__lead" href={articleUrl(lead)}>
+              <img src={`/covers/${lead.slug}.svg`} alt="" width="1200" height="630" loading="eager" />
+              <span class="urgent__body">
+                <span class="article-card__meta">
+                  <RankBadge rank={lead.general_rank} withMeaning />
+                  <span class="chip chip--topic">{topicLabel(lead.topic)}</span>
+                  <time datetime={lead.published_at}>{formatDate(lead.published_at)}</time>
+                </span>
+                <span class="urgent__title">{lead.title}</span>
+                <span class="article-card__lead">{lead.why_read}</span>
+              </span>
+            </a>
+            <ul class="list urgent__list">{restUrgent.map((a) => <ArticleRow article={a} />)}</ul>
+          </div>
+        ) : (
+          <p class="empty">現在、一般緊急度 S・A の記事はありません。</p>
+        )
+      }
+    </section>
+
+    <section class="section" aria-label="トピック">
+      <div class="topic-band">
+        {TOPICS.map((t) => <a class="chip chip--topic" href={`/${t.key}/`}>{t.name}</a>)}
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="purpose-title">
+      <SectionHead eyebrow="HOW TO USE" title="目的から探す" id="purpose-title" />
+      <ol class="purposes">
+        {
+          purposes.map((p) => (
+            <li>
+              <a class="card purpose" href={p.href}>
+                <span class="purpose__no">{p.no}</span>
+                <span class="purpose__title">{p.title}</span>
+                <span class="purpose__text">{p.text}</span>
+              </a>
+            </li>
+          ))
+        }
+      </ol>
+    </section>
+
+    <section class="section" aria-labelledby="topics-title">
+      <SectionHead eyebrow="TOPICS" title="トピック" moreHref="/topics/" moreLabel="トピック一覧" id="topics-title" />
+      <div class="topic-cards">
+        {
+          TOPICS.map((t) => (
+            <a class="card topic-card" href={`/${t.key}/`}>
+              <span class="eyebrow">{t.label}</span>
+              <span class="topic-card__name">{t.name}</span>
+              <span class="topic-card__desc">{t.description}</span>
+              <span class="topic-card__count">{counts[t.key] ?? 0}本の記事</span>
+            </a>
+          ))
+        }
+      </div>
+    </section>
+
+    <div class="two-col">
+      <section class="section" aria-labelledby="popular-title">
+        <SectionHead eyebrow="POPULAR" title="よく読まれている記事" id="popular-title" />
+        <div data-tabs>
+          <div class="tabs" role="tablist">
+            <button role="tab" aria-selected="true" aria-controls="pop-24h" id="tab-24h">24時間</button>
+            <button role="tab" aria-selected="false" aria-controls="pop-30d" id="tab-30d">月間</button>
+          </div>
+          <ol class="list" id="pop-24h" role="tabpanel" aria-labelledby="tab-24h">{popular24.map((a, i) => <ArticleRow article={a} index={i + 1} />)}</ol>
+          <ol class="list" id="pop-30d" role="tabpanel" aria-labelledby="tab-30d" hidden>{popular30.map((a, i) => <ArticleRow article={a} index={i + 1} />)}</ol>
+          {popular24.length === 0 && <p class="empty">まだ記事がありません。</p>}
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="pick-title">
+        <SectionHead eyebrow="EDITOR'S PICK" title="編集部のおすすめ" id="pick-title" />
+        {pinned.length ? <ul class="list">{pinned.map((a) => <ArticleRow article={a} />)}</ul> : <p class="empty">おすすめ記事は準備中です。</p>}
+      </section>
+    </div>
+
+    <section class="section" aria-labelledby="by-topic-title">
+      <SectionHead eyebrow="BY TOPIC" title="トピック別の新着" id="by-topic-title" />
+      <div class="by-topic">
+        {
+          byTopic.map(({ topic, articles }) => (
+            <div class="card by-topic__col">
+              <h3 class="by-topic__name">
+                <span class="eyebrow">{topic.label}</span>
+                {topic.name}
+              </h3>
+              {articles.length ? <ul class="list">{articles.map((a) => <ArticleRow article={a} />)}</ul> : <p class="small muted">まだ記事がありません。</p>}
+              <a class="section__more" href={`/${topic.key}/`}>記事一覧へ →</a>
+            </div>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="new-title">
+      <SectionHead eyebrow="WHAT'S NEW" title="新着記事" id="new-title" />
+      {latest.length ? <div class="cards">{latest.map((a) => <ArticleCard article={a} />)}</div> : <p class="empty">記事は準備中です。</p>}
+      <p style="text-align:center;margin-top:24px"><a class="btn" href="/articles/">すべての記事を見る（{total}本）</a></p>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .hero {
+    background: linear-gradient(180deg, var(--night) 0%, var(--night-2) 100%);
+    color: var(--night-ink);
+    margin-top: -24px;
+    padding: 48px 0 40px;
+  }
+  .hero .eyebrow {
+    color: #8fc9b0;
+  }
+  .hero__inner {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr;
+    gap: 32px;
+    align-items: end;
+  }
+  .hero__copy {
+    font-size: clamp(24px, 4vw, 36px);
+    line-height: 1.45;
+    margin: 8px 0 12px;
+    color: #fff;
+  }
+  .hero__lead {
+    margin: 0 0 20px;
+    color: #c6dad3;
+    font-size: 15px;
+  }
+  .hero__search {
+    display: flex;
+    gap: 8px;
+    max-width: 560px;
+  }
+  .hero__search input {
+    flex: 1;
+    min-width: 0;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    padding: 10px 14px;
+  }
+  .hero__search input::placeholder {
+    color: #9fb8af;
+  }
+  .hero__stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 0;
+  }
+  .hero__stats div {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: var(--radius);
+    padding: 14px 12px;
+    text-align: center;
+  }
+  .hero__stats dt {
+    font-size: 12px;
+    color: #a9c4ba;
+  }
+  .hero__stats dd {
+    margin: 4px 0 0;
+    font-size: 28px;
+    font-weight: 800;
+    color: #fff;
+    font-family: var(--mono);
+  }
+  .hero__stats small {
+    font-size: 12px;
+    margin-left: 2px;
+    font-family: var(--font);
+  }
+  .urgent {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 20px;
+  }
+  .urgent__lead {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    text-decoration: none;
+    color: var(--ink);
+  }
+  .urgent__lead img {
+    display: block;
+    aspect-ratio: 1200 / 630;
+    object-fit: cover;
+    background: var(--night);
+  }
+  .urgent__body {
+    display: grid;
+    gap: 8px;
+    padding: 16px;
+  }
+  .urgent__title {
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1.55;
+  }
+  .urgent__lead:hover .urgent__title {
+    color: var(--brand);
+  }
+  .topic-band {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .topic-band .chip {
+    font-size: 14px;
+    padding: 6px 14px;
+  }
+  .purposes {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+  .purpose {
+    display: grid;
+    gap: 4px;
+    padding: 16px;
+    text-decoration: none;
+    color: var(--ink);
+    height: 100%;
+  }
+  .purpose__no {
+    font-family: var(--mono);
+    color: var(--brand);
+    font-weight: 800;
+  }
+  .purpose__title {
+    font-size: 18px;
+    font-weight: 800;
+  }
+  .purpose__text {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .topic-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+  }
+  .topic-card {
+    display: grid;
+    gap: 4px;
+    padding: 16px;
+    text-decoration: none;
+    color: var(--ink);
+  }
+  .topic-card__name {
+    font-weight: 800;
+    font-size: 16px;
+  }
+  .topic-card__desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .topic-card__count {
+    font-size: 12px;
+    color: var(--brand);
+    font-weight: 700;
+  }
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+  .tabs button {
+    border: 1px solid var(--line);
+    background: var(--paper);
+    border-radius: 999px;
+    padding: 2px 14px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .tabs button[aria-selected="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: #fff;
+  }
+  .by-topic {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .by-topic__col {
+    padding: 16px;
+  }
+  .by-topic__name {
+    margin: 0;
+    font-size: 16px;
+    display: grid;
+  }
+  @media (max-width: 900px) {
+    .hero__inner,
+    .urgent,
+    .two-col {
+      grid-template-columns: 1fr;
+    }
+    .purposes {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (max-width: 520px) {
+    .hero__stats dd {
+      font-size: 22px;
+    }
+    .by-topic {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

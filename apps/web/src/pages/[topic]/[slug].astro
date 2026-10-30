@@ -1,0 +1,872 @@
+---
+import Base from "../../layouts/Base.astro";
+import RankBadge from "../../components/RankBadge.astro";
+import ArticleCard from "../../components/ArticleCard.astro";
+import ArticleRow from "../../components/ArticleRow.astro";
+import AskAi from "../../components/AskAi.astro";
+import { cvssLabel, DISCLAIMERS, factsAffected, factsFixed, isTopicKey, severityLabel, SITE, type AskArticleData, type TocItem } from "@ichiji/core";
+import { cacheMediaPage, catalog } from "../../server/media";
+import { articleUrl, formatDate, formatIsoDate, parseJson, rankMeaning, topicLabel, topicName } from "../../server/format";
+
+const { topic = "", slug = "" } = Astro.params;
+if (!isTopicKey(topic)) return new Response(null, { status: 404 });
+const repo = catalog();
+const article = await repo.getArticle(topic, slug);
+if (!article) {
+  // トピックが変わった記事は正しいURLへ
+  const moved = await repo.getArticleBySlug(slug);
+  if (moved) return Astro.redirect(articleUrl(moved), 301);
+  return new Response(null, { status: 404 });
+}
+cacheMediaPage(Astro);
+
+const cveIds = parseJson<string[]>(article.cve_ids, []);
+const points = parseJson<string[]>(article.points, []);
+const gains = parseJson<string[]>(article.gains, []);
+const faq = parseJson<Array<{ q: string; a: string }>>(article.faq, []);
+const sources = parseJson<Array<{ title: string; url: string; note?: string }>>(article.sources, []);
+const tags = parseJson<string[]>(article.tags, []);
+const toc = parseJson<TocItem[]>(article.toc, []);
+
+const [factsList, related, adjacent, revisions, popular] = await Promise.all([
+  repo.getFactsMany(cveIds),
+  repo.relatedArticles(article, 3),
+  repo.adjacentArticles(article),
+  repo.listRevisions(article.id),
+  repo.popularArticles("24h", 5),
+]);
+const readNext = await repo.relatedArticles(article, 6, related.map((r) => r.id));
+const facts = cveIds.map((id) => factsList.find((f) => f.id === id)).filter((f) => f !== undefined);
+const primary = facts[0];
+const rank = primary?.rank ?? article.general_rank;
+const allPackages = facts.flatMap((f) => f.packages);
+const fixed = factsFixed(allPackages);
+const affected = facts.length === 1 ? factsAffected(primary!.packages) : facts.map((f) => factsAffected(f.packages)).join("; ");
+const url = new URL(articleUrl(article), Astro.url.origin).toString();
+const cover = `/covers/${article.slug}.svg`;
+
+const epssText = (e: number | null, p: number | null) => (e === null ? "不明" : `${e.toFixed(4)}${p !== null ? `（上位${Math.max(1, Math.round((1 - p) * 100))}%）` : ""}`);
+const kevText = (f: (typeof facts)[number]) => (f.kev ? `掲載（${f.kevAddedAt ? formatIsoDate(f.kevAddedAt) : "日付不明"}）` : "未掲載");
+
+const askData: AskArticleData = {
+  title: article.title,
+  url,
+  facts: {
+    cveIds,
+    packages: allPackages.map((p) => p.purl),
+    affected,
+    fixed,
+    cvss: primary ? cvssLabel(primary.cvss) : "未算出",
+    epss: primary ? epssText(primary.epss, primary.epssPercentile) : "不明",
+    kev: primary ? kevText(primary) : "不明",
+    rank: `${rank}（${rankMeaning(rank)}）`,
+  },
+  points,
+  excerpt: article.excerpt,
+};
+const factsText = [
+  `CVE：${cveIds.join(", ")}`,
+  `影響パッケージ：${allPackages.map((p) => p.purl).join(", ")}`,
+  `影響バージョン：${affected}`,
+  `修正版：${fixed.join(", ") || "なし"}`,
+  `CVSS：${askData.facts.cvss} ／ EPSS：${askData.facts.epss} ／ KEV：${askData.facts.kev}`,
+  `一般緊急度：${askData.facts.rank}`,
+  `出典：${url}`,
+].join("\n");
+
+const share = {
+  x: `https://x.com/intent/post?text=${encodeURIComponent(article.title)}&url=${encodeURIComponent(url)}`,
+  hatena: `https://b.hatena.ne.jp/add?mode=confirm&url=${encodeURIComponent(url)}&title=${encodeURIComponent(article.title)}`,
+  line: `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(url)}`,
+};
+
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    headline: article.title,
+    description: article.description || article.why_read,
+    datePublished: article.published_at,
+    dateModified: article.updated_at,
+    author: { "@type": "Organization", name: SITE.editorial },
+    publisher: { "@type": "Organization", name: SITE.name },
+    image: new URL(cover, Astro.url.origin).toString(),
+    mainEntityOfPage: url,
+    keywords: [...cveIds, ...tags].join(", "),
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "ホーム", item: new URL("/", Astro.url.origin).toString() },
+      { "@type": "ListItem", position: 2, name: topicName(topic), item: new URL(`/${topic}/`, Astro.url.origin).toString() },
+      { "@type": "ListItem", position: 3, name: article.title, item: url },
+    ],
+  },
+  ...(faq.length
+    ? [
+        {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: faq.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
+        },
+      ]
+    : []),
+];
+---
+
+<Base title={article.title} description={article.description || article.why_read} ogImage={cover} ogType="article" jsonLd={jsonLd} articleNav activeTopic={topic}>
+  <div class="container article-layout">
+    <article class="article" data-article-slug={article.slug} data-article-topic={article.topic}>
+      <nav class="breadcrumb" aria-label="パンくず">
+        <ol>
+          <li><a href="/">ホーム</a></li>
+          <li><a href={`/${topic}/`}>{topicName(topic)}</a></li>
+          <li aria-current="page">{article.title}</li>
+        </ol>
+      </nav>
+
+      <header class="article__header">
+        <div class="article-card__meta">
+          <RankBadge rank={rank} withMeaning />
+          <a class="chip chip--topic" href={`/${topic}/`}>{topicLabel(topic)}</a>
+          {cveIds.map((id) => <span class="mono small">{id}</span>)}
+        </div>
+        <h1 class="article__title">{article.title}</h1>
+        <p class="article__meta">
+          <span>公開 <time datetime={article.published_at}>{formatDate(article.published_at)}</time></span>
+          {article.updated_at !== article.published_at && <span>更新 <time datetime={article.updated_at}>{formatDate(article.updated_at)}</time></span>}
+          <span>読了 約{article.reading_minutes}分</span>
+          <span>執筆 {SITE.editorial}</span>
+        </p>
+        {tags.length > 0 && <p class="article__tags">{tags.map((t) => <a class="chip" href={`/tags/${encodeURIComponent(t)}/`}>#{t}</a>)}</p>}
+        <div class="article__actions">
+          <button type="button" class="btn btn--sm" data-save data-save-url={articleUrl(article)} data-save-title={article.title} data-save-cve={cveIds[0]} data-save-rank={rank} aria-pressed="false">
+            <span data-save-star aria-hidden="true">☆</span><span data-save-label>保存する</span>
+          </button>
+          <a class="btn btn--sm" href={share.x} target="_blank" rel="noopener">X</a>
+          <a class="btn btn--sm" href={share.hatena} target="_blank" rel="noopener">はてブ</a>
+          <a class="btn btn--sm" href={share.line} target="_blank" rel="noopener">LINE</a>
+          <button type="button" class="btn btn--sm" data-copy="url">URLコピー</button>
+        </div>
+      </header>
+
+      <figure class="article__cover">
+        <img src={cover} alt={`${cveIds[0]}・${topicName(topic)}・一般緊急度${rank}`} width="1200" height="630" />
+      </figure>
+
+      <p class="article__disclaimer small muted">{DISCLAIMERS.article}</p>
+
+      <section class="why-read" aria-label="WHY READ">
+        <p class="eyebrow">WHY READ</p>
+        <p class="why-read__text">{article.why_read}</p>
+      </section>
+
+      {
+        related.length > 0 && (
+          <aside class="next-read" aria-label="続きに読むなら">
+            <p class="next-read__title">続きに読むなら</p>
+            <ul class="list">{related.map((a) => <ArticleRow article={a} />)}</ul>
+          </aside>
+        )
+      }
+
+      <section class="facts card" id="facts" aria-labelledby="facts-title">
+        <div class={`facts__head facts__head--${rank}`}>
+          <span class="facts__rank">{rank}</span>
+          <div>
+            <h2 id="facts-title">一般緊急度 {rank}　{rankMeaning(rank)}</h2>
+            {primary && primary.rankReasons.length > 0 && <p class="facts__reasons">判定：{primary.rankReasons.join("／")}</p>}
+          </div>
+        </div>
+        {
+          facts.map((f) => (
+            <dl class="facts__grid">
+              <div><dt>CVE番号</dt><dd class="mono">{f.id}</dd></div>
+              <div><dt>影響パッケージ</dt><dd class="mono">{f.packages.map((p) => <span class="facts__pkg">{p.purl}</span>)}</dd></div>
+              <div><dt>影響バージョン</dt><dd class="mono">{f.packages.map((p) => <span class="facts__pkg">{p.affected}</span>)}</dd></div>
+              <div><dt>修正版</dt><dd class="mono">{factsFixed(f.packages).join(", ") || "なし（未修正）"}</dd></div>
+              <div><dt>CVSS</dt><dd>{cvssLabel(f.cvss)}{f.cvss && <span class="small muted">　{severityLabel(f.cvss.score)}</span>}</dd></div>
+              <div><dt>EPSS</dt><dd>{epssText(f.epss, f.epssPercentile)}</dd></div>
+              <div><dt>KEV</dt><dd>{kevText(f)}</dd></div>
+              <div><dt>PoC</dt><dd>{f.poc ? "あり" : "確認できず"}</dd></div>
+              <div><dt>公開日</dt><dd>{formatDate(f.publishedAt)}</dd></div>
+              <div><dt>更新日</dt><dd>{formatDate(f.modifiedAt)}</dd></div>
+              {f.aliases.length > 0 && <div class="facts__wide"><dt>別名</dt><dd class="mono small">{f.aliases.join(", ")}</dd></div>}
+            </dl>
+          ))
+        }
+        <div class="facts__foot">
+          <button type="button" class="btn btn--primary btn--sm" data-copy={factsText}>事実データをコピー</button>
+          <a class="btn btn--sm" href="#ask-ai">うちには必要？をAIに聞く</a>
+          <span class="small muted">事実データは一次ソース（OSV・NVD・CISA KEV・EPSS）と機械照合した値をデータベースから表示しています。</span>
+        </div>
+      </section>
+
+      {
+        points.length > 0 && (
+          <section class="points" aria-labelledby="points-title">
+            <h2 id="points-title">この記事のポイント</h2>
+            <ol>{points.map((p) => <li>{p}</li>)}</ol>
+          </section>
+        )
+      }
+
+      {
+        gains.length > 0 && (
+          <section class="gains" aria-labelledby="gains-title">
+            <h2 id="gains-title">この記事で得られること</h2>
+            <ul>{gains.map((g) => <li>{g}</li>)}</ul>
+          </section>
+        )
+      }
+
+      <div class="prose" set:html={article.body_html} />
+
+      {
+        article.check_html && (
+          <section class="prose check" aria-labelledby="check-commands">
+            <h2 id="check-commands">自環境の確認コマンド</h2>
+            <Fragment set:html={article.check_html} />
+          </section>
+        )
+      }
+
+      {
+        article.summary_html && (
+          <section class="prose summary" aria-labelledby="summary">
+            <h2 id="summary">まとめ</h2>
+            <Fragment set:html={article.summary_html} />
+          </section>
+        )
+      }
+
+      {
+        sources.length > 0 && (
+          <section class="sources" aria-labelledby="sources-title">
+            <h2 id="sources-title">参照ソース</h2>
+            <ul>
+              {sources.map((s) => (
+                <li>
+                  <a href={s.url} target="_blank" rel="noopener nofollow">{s.title}</a>
+                  {s.note && <span class="muted small">　{s.note}</span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      }
+
+      <p class="notice small">{DISCLAIMERS.article}</p>
+
+      <AskAi data={askData} />
+
+      <section class="share-bar" aria-label="シェア">
+        <p>役に立ったらシェアをお願いします</p>
+        <div class="article__actions">
+          <a class="btn btn--sm" href={share.x} target="_blank" rel="noopener">X でシェア</a>
+          <a class="btn btn--sm" href={share.hatena} target="_blank" rel="noopener">はてブ</a>
+          <a class="btn btn--sm" href={share.line} target="_blank" rel="noopener">LINE</a>
+          <button type="button" class="btn btn--sm" data-copy="url">URLコピー</button>
+        </div>
+      </section>
+
+      {
+        faq.length > 0 && (
+          <section class="faq" aria-labelledby="faq-title">
+            <h2 id="faq-title">よくある質問</h2>
+            {faq.map((f) => (
+              <details>
+                <summary>{f.q}</summary>
+                <p>{f.a}</p>
+              </details>
+            ))}
+          </section>
+        )
+      }
+
+      {
+        related.length > 0 && (
+          <aside class="next-read" aria-label="続きに読むなら">
+            <p class="next-read__title">続きに読むなら</p>
+            <ul class="list">{related.map((a) => <ArticleRow article={a} />)}</ul>
+          </aside>
+        )
+      }
+
+      <section class="policy" aria-labelledby="policy-title">
+        <h2 id="policy-title"><span class="eyebrow">EDITORIAL POLICY</span>{SITE.name}の編集方針</h2>
+        <ul class="policy__grid">
+          <li><strong>一次ソースで照合</strong><span>OSV・NVD・CISA KEV・EPSS の一次ソースをもとに事実データを作ります。</span></li>
+          <li><strong>機械照合を通ったものだけ公開</strong><span>CVE番号・影響バージョン・修正版・CVSSがソースと一致しない記事は公開しません。</span></li>
+          <li><strong>参照ソースを明記</strong><span>記事ごとに引用元のURLを載せ、更新・訂正の履歴を残します。</span></li>
+        </ul>
+        <p class="policy__links">
+          <a href="/about/">運営者情報</a>
+          <a href="/editorial-policy/">エディトリアルポリシー</a>
+          <a href={`/contact/?type=correction&url=${encodeURIComponent(url)}`}>誤りを知らせる</a>
+        </p>
+      </section>
+
+      {
+        revisions.length > 0 && (
+          <section class="revisions" aria-labelledby="rev-title">
+            <h2 id="rev-title">訂正履歴</h2>
+            <ul>
+              {revisions.map((r) => (
+                <li>
+                  <time datetime={r.revised_at}>{formatDate(r.revised_at)}</time>　{r.kind === "correction" ? "訂正" : "更新"}：{r.note}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      }
+
+      {
+        readNext.length > 0 && (
+          <section class="section" aria-labelledby="readnext-title">
+            <div class="section__head">
+              <h2 class="section__title" id="readnext-title"><span class="eyebrow">READ NEXT</span><span>続けて読む</span></h2>
+            </div>
+            <div class="cards">{readNext.map((a) => <ArticleCard article={a} />)}</div>
+          </section>
+        )
+      }
+
+      <nav class="prevnext" aria-label="前後の記事">
+        {adjacent.prev ? <a class="card prevnext__item" href={articleUrl(adjacent.prev)}><span class="eyebrow">← PREV</span><span>{adjacent.prev.title}</span></a> : <span />}
+        {adjacent.next ? <a class="card prevnext__item prevnext__item--next" href={articleUrl(adjacent.next)}><span class="eyebrow">NEXT →</span><span>{adjacent.next.title}</span></a> : <span />}
+      </nav>
+    </article>
+
+    <aside class="sidebar" aria-label="サイドバー">
+      <div class="sidebar__sticky">
+        {
+          toc.length > 0 && (
+            <nav class="card toc" aria-label="目次">
+              <p class="toc__title">目次</p>
+              <ol>
+                <li><a href="#facts">事実データ</a></li>
+                {toc.filter((t) => t.depth === 2).map((t) => <li><a href={`#${t.id}`}>{t.text}</a></li>)}
+                <li><a href="#ask-ai">AIに相談する</a></li>
+              </ol>
+            </nav>
+          )
+        }
+        <section class="card popular-side" aria-labelledby="side-pop">
+          <p class="toc__title" id="side-pop">よく読まれている記事</p>
+          <ol class="list">{popular.map((a, i) => <ArticleRow article={a} index={i + 1} />)}</ol>
+        </section>
+      </div>
+    </aside>
+  </div>
+
+  <dialog class="toc-dialog" data-toc-dialog aria-label="目次">
+    <p class="toc__title">目次</p>
+    <ol>
+      <li><a href="#facts">事実データ</a></li>
+      {toc.filter((t) => t.depth === 2).map((t) => <li><a href={`#${t.id}`}>{t.text}</a></li>)}
+      <li><a href="#ask-ai">AIに相談する</a></li>
+    </ol>
+    <form method="dialog"><button class="btn btn--sm">閉じる</button></form>
+  </dialog>
+</Base>
+
+<script>
+  // 閲覧数（人気ランキング用）。個人は特定しない
+  const el = document.querySelector<HTMLElement>("[data-article-slug]");
+  if (el) {
+    const body = JSON.stringify({ slug: el.dataset.articleSlug, topic: el.dataset.articleTopic });
+    if (!navigator.sendBeacon?.("/api/views", body)) void fetch("/api/views", { method: "POST", body, keepalive: true });
+  }
+</script>
+
+<style>
+  .article-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 40px;
+    align-items: start;
+  }
+  .article {
+    min-width: 0;
+  }
+  .article__title {
+    font-size: clamp(22px, 3.2vw, 30px);
+    line-height: 1.5;
+    margin: 12px 0;
+  }
+  .article__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 0 8px;
+  }
+  .article__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 12px;
+  }
+  .article__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .article__cover {
+    margin: 20px 0 8px;
+  }
+  .article__cover img {
+    display: block;
+    width: 100%;
+    border-radius: var(--radius);
+    background: var(--night);
+  }
+  .why-read {
+    margin: 24px 0;
+  }
+  .why-read__text {
+    font-size: 17px;
+    line-height: 1.95;
+    margin: 4px 0 0;
+  }
+  .next-read {
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 8px 0;
+    margin: 24px 0;
+  }
+  .next-read__title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    margin: 4px 0 0;
+  }
+  .next-read .list-row {
+    padding: 8px 0;
+  }
+  .next-read li:last-child .list-row {
+    border-bottom: 0;
+  }
+  .facts {
+    margin: 32px 0;
+    overflow: hidden;
+  }
+  .facts__head {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    padding: 16px 20px;
+    background: var(--brand-soft-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .facts__head h2 {
+    margin: 0;
+    font-size: 18px;
+  }
+  .facts__rank {
+    width: 52px;
+    height: 52px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 28px;
+    font-weight: 900;
+    flex-shrink: 0;
+    background: var(--rank-c);
+  }
+  .facts__head--S .facts__rank {
+    background: var(--rank-s);
+  }
+  .facts__head--A .facts__rank {
+    background: var(--rank-a);
+  }
+  .facts__head--B .facts__rank {
+    background: var(--rank-b);
+  }
+  .facts__reasons {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .facts__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .facts__grid > div {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--line-2);
+  }
+  .facts__grid dt {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+  .facts__grid dd {
+    margin: 2px 0 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .facts__pkg {
+    display: block;
+  }
+  .facts__wide {
+    grid-column: 1 / -1;
+  }
+  .facts__foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 14px 20px;
+  }
+  .points {
+    background: var(--brand-soft);
+    border-radius: var(--radius);
+    padding: 18px 22px;
+    margin: 28px 0;
+  }
+  .points h2,
+  .gains h2 {
+    margin: 0 0 8px;
+    font-size: 17px;
+  }
+  .points ol {
+    margin: 0;
+    padding-left: 1.4em;
+  }
+  .points li {
+    font-weight: 600;
+    margin: 4px 0;
+  }
+  .gains {
+    border: 1px solid var(--line);
+    background: var(--paper);
+    border-radius: var(--radius);
+    padding: 18px 22px;
+    margin: 28px 0;
+  }
+  .gains ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .gains li {
+    padding-left: 1.6em;
+    position: relative;
+    margin: 4px 0;
+  }
+  .gains li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: var(--brand);
+    font-weight: 800;
+  }
+  .prose :global(h2) {
+    font-size: 22px;
+    line-height: 1.5;
+    margin: 48px 0 16px;
+    padding: 4px 0 4px 14px;
+    border-left: 5px solid var(--brand);
+  }
+  .prose :global(h3) {
+    font-size: 18px;
+    margin: 32px 0 12px;
+  }
+  .prose :global(p) {
+    margin: 0 0 1.1em;
+  }
+  .prose :global(ul),
+  .prose :global(ol) {
+    padding-left: 1.5em;
+  }
+  .prose :global(ol > li::marker) {
+    color: var(--brand);
+    font-weight: 800;
+  }
+  .prose :global(code) {
+    font-family: var(--mono);
+    font-size: 0.9em;
+    background: var(--brand-soft-2);
+    border: 1px solid var(--line);
+    padding: 0 5px;
+    border-radius: 4px;
+  }
+  .prose :global(.codeblock) {
+    margin: 16px 0 20px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--code-bg);
+  }
+  .prose :global(.codeblock__bar) {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    background: #0a161d;
+    font-size: 12px;
+    color: #8fb3a6;
+  }
+  .prose :global(.codeblock__copy) {
+    border: 1px solid #2c4652;
+    background: transparent;
+    color: #cfe3dc;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 1px 10px;
+    cursor: pointer;
+  }
+  .prose :global(.codeblock pre) {
+    margin: 0;
+    padding: 14px 16px;
+    overflow-x: auto;
+    color: var(--code-ink);
+    line-height: 1.7;
+  }
+  .prose :global(.codeblock code) {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    font-size: 13px;
+  }
+  .prose :global(.table-wrap) {
+    overflow-x: auto;
+    margin: 16px 0 20px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .prose :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    background: var(--paper);
+  }
+  .prose :global(th),
+  .prose :global(td) {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+  .prose :global(th) {
+    background: var(--brand-soft-2);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .prose :global(.md-box) {
+    background: var(--brand-soft-2);
+    border: 1px solid #cfe5db;
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin: 16px 0 24px;
+    font-size: 15px;
+  }
+  .prose :global(.md-box p:last-child) {
+    margin-bottom: 0;
+  }
+  .prose :global(.md-box__label) {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--brand);
+    margin: 0 0 4px !important;
+  }
+  .prose :global(.md-box--warning) {
+    background: #fff6ee;
+    border-color: #f3d3b8;
+  }
+  .prose :global(blockquote) {
+    margin: 16px 0;
+    padding: 4px 16px;
+    border-left: 4px solid var(--line);
+    color: var(--ink-2);
+  }
+  .sources ul {
+    padding-left: 1.2em;
+  }
+  .sources li {
+    margin: 6px 0;
+    word-break: break-all;
+  }
+  .sources h2,
+  .faq h2,
+  .revisions h2 {
+    font-size: 20px;
+    margin: 40px 0 12px;
+  }
+  .share-bar {
+    text-align: center;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--paper);
+    padding: 16px;
+  }
+  .share-bar p {
+    margin: 0 0 8px;
+    font-weight: 700;
+  }
+  .share-bar .article__actions {
+    justify-content: center;
+  }
+  .faq details {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    margin: 8px 0;
+    padding: 0 16px;
+  }
+  .faq summary {
+    cursor: pointer;
+    font-weight: 700;
+    padding: 12px 0;
+  }
+  .faq summary::before {
+    content: "Q. ";
+    color: var(--brand);
+  }
+  .faq details p {
+    margin: 0 0 12px;
+  }
+  .policy {
+    background: var(--night);
+    color: var(--night-ink);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin: 40px 0;
+  }
+  .policy h2 {
+    margin: 0 0 12px;
+    font-size: 18px;
+    display: grid;
+    color: #fff;
+  }
+  .policy .eyebrow {
+    color: #8fc9b0;
+  }
+  .policy__grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .policy__grid li {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    display: grid;
+    gap: 4px;
+    font-size: 13px;
+  }
+  .policy__grid strong {
+    color: #fff;
+  }
+  .policy__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 14px 0 0;
+    font-size: 13px;
+  }
+  .policy__links a {
+    color: #bfe3d2;
+  }
+  .revisions ul {
+    padding-left: 1.2em;
+    font-size: 14px;
+  }
+  .prevnext {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 32px;
+  }
+  .prevnext__item {
+    display: grid;
+    gap: 4px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: var(--ink);
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .prevnext__item--next {
+    text-align: right;
+  }
+  .sidebar__sticky {
+    position: sticky;
+    top: 130px;
+    display: grid;
+    gap: 16px;
+  }
+  .toc {
+    padding: 16px;
+  }
+  .toc__title {
+    font-weight: 800;
+    font-size: 14px;
+    margin: 0 0 8px;
+  }
+  .toc ol,
+  .toc-dialog ol {
+    margin: 0;
+    padding-left: 1.2em;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .toc a,
+  .toc-dialog a {
+    color: var(--ink-2);
+    text-decoration: none;
+  }
+  .toc a:hover {
+    color: var(--brand);
+  }
+  .popular-side {
+    padding: 16px;
+  }
+  .popular-side :global(.list-row__title) {
+    font-size: 13px;
+  }
+  .toc-dialog {
+    border: 0;
+    border-radius: var(--radius);
+    width: min(92vw, 420px);
+    padding: 20px;
+  }
+  .toc-dialog::backdrop {
+    background: rgba(15, 36, 48, 0.5);
+  }
+  .toc-dialog li {
+    margin: 6px 0;
+  }
+  @media (max-width: 1024px) {
+    .article-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .sidebar {
+      display: none;
+    }
+  }
+  @media (max-width: 640px) {
+    .facts__grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .policy__grid,
+    .prevnext {
+      grid-template-columns: 1fr;
+    }
+    .prevnext__item--next {
+      text-align: left;
+    }
+  }
+</style>

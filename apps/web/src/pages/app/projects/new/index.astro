@@ -1,0 +1,31 @@
+---
+import Base from "../../../../layouts/Base.astro";
+import AppNav from "../../../../components/AppNav.astro";
+---
+
+<Base title="プロジェクトを追加" noindex>
+  <div class="container">
+    <header class="page-head"><p class="eyebrow">NEW PROJECT</p><h1>プロジェクトを追加</h1></header>
+    <AppNav current="dashboard" />
+    <form class="card panel form" data-new-project style="max-width:560px">
+      <div class="field">
+        <label for="name">プロジェクト名</label>
+        <input id="name" name="name" maxlength="100" required placeholder="例：acme-crm（本番）" />
+        <p class="hint">1つの stack.yaml = 1プロジェクトです。component数・パッケージ数の上限はありません。</p>
+      </div>
+      <button class="btn btn--primary" type="submit">作成して、スタックを登録する</button>
+      <p class="form-status" role="status" data-status></p>
+    </form>
+  </div>
+</Base>
+
+<script>
+  import { api, errorMessage, setStatus } from "../../../../scripts/forms";
+  const form = document.querySelector<HTMLFormElement>("[data-new-project]")!;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const r = await api<{ project: { id: string } }>("/api/projects", { body: { name: new FormData(form).get("name") } });
+    if (!r.ok) return setStatus(form.querySelector("[data-status]"), errorMessage(r.data), "error");
+    location.href = `/app/projects/${r.data.project.id}/settings/`;
+  });
+</script>

@@ -1,0 +1,23 @@
+---
+import Base from "../../../layouts/Base.astro";
+import ArticleCard from "../../../components/ArticleCard.astro";
+import Pagination from "../../../components/Pagination.astro";
+import { cacheMediaPage, catalog, pageParam } from "../../../server/media";
+
+const tag = decodeURIComponent(Astro.params.tag ?? "").slice(0, 40);
+if (!tag) return new Response(null, { status: 404 });
+cacheMediaPage(Astro);
+const perPage = 24;
+const page = pageParam(Astro.url);
+const repo = catalog();
+const [articles, total] = await Promise.all([repo.listArticles({ limit: perPage, offset: (page - 1) * perPage, tag }), repo.countArticles({ tag })]);
+---
+
+<Base title={`#${tag} の記事`} activeSection="tags" noindex={total === 0}>
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li><a href="/tags/">タグ一覧</a></li><li aria-current="page">#{tag}</li></ol></nav>
+    <header class="page-head"><p class="eyebrow">TAG</p><h1>#{tag}</h1><p class="muted">{total}本の記事</p></header>
+    {articles.length ? <div class="cards">{articles.map((a) => <ArticleCard article={a} />)}</div> : <p class="empty">このタグの記事はありません。</p>}
+    <Pagination page={page} total={total} perPage={perPage} baseHref={`/tags/${encodeURIComponent(tag)}/`} />
+  </div>
+</Base>

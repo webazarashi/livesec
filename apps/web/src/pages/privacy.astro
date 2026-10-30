@@ -1,0 +1,39 @@
+---
+import Base from "../layouts/Base.astro";
+import { SITE } from "@ichiji/core";
+import { cacheMediaPage } from "../server/media";
+cacheMediaPage(Astro, 3600);
+---
+
+<Base title="プライバシーポリシー">
+  <div class="container doc">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">プライバシーポリシー</li></ol></nav>
+    <header class="page-head"><p class="eyebrow">PRIVACY</p><h1>プライバシーポリシー</h1></header>
+    <p class="notice notice--warn small">この文面は初期案です。公開前に専門家の確認を受けてください。</p>
+    <h2>取得する情報</h2>
+    <ul>
+      <li>会員登録時のメールアドレス・パスワード（パスワードはハッシュ化して保存します）</li>
+      <li>会員が登録した「私の環境」のテキスト</li>
+      <li>会員が登録したスタック情報（stack.yaml・SBOM）と、そこから作った照合結果</li>
+      <li>Slack Incoming Webhook の URL（暗号化して保存します）</li>
+      <li>ログインの記録（IPアドレス・ブラウザの情報。不正なログインの防止のため）</li>
+      <li>記事ごとの閲覧数（人気ランキングの集計のため。個人は特定しません）</li>
+    </ul>
+    <h2>利用目的</h2>
+    <ul>
+      <li>脆弱性情報との照合、緊急度の判定、Slack への通知、ダッシュボードの表示</li>
+      <li>Ask AI のプロンプトへの「私の環境」の差し込み（ブラウザの中で行います）</li>
+      <li>不正利用の防止、サービスの改善</li>
+    </ul>
+    <p>登録されたスタック情報・「私の環境」を上記の目的以外に使うことはありません。</p>
+    <h2>Ask AI について</h2>
+    <p>Ask AI のプロンプトはブラウザの中で組み立て、{SITE.name}のサーバには送りません。送信ボタンを押すと、選んだAIサービス（ChatGPT・Claude・Gemini 等）にプロンプトが渡ります。外部AIサービスでの取り扱いは各サービスの規約に従います。</p>
+    <h2>保存と削除</h2>
+    <ul>
+      <li>プロジェクトを削除すると、そのスタック情報・照合結果・通知の記録を削除します。アップロードされた原本は一定期間ののち削除します。</li>
+      <li>アカウントの削除をご希望の場合は <a href="/contact/">お問い合わせ</a> からご連絡ください。</li>
+    </ul>
+    <h2>ブラウザへの保存</h2>
+    <p>記事の「☆保存」はお使いのブラウザ（localStorage）にのみ保存し、サーバには送りません。</p>
+  </div>
+</Base>

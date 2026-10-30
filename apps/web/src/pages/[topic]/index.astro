@@ -1,0 +1,30 @@
+---
+import Base from "../../layouts/Base.astro";
+import ArticleCard from "../../components/ArticleCard.astro";
+import Pagination from "../../components/Pagination.astro";
+import { getTopic, isTopicKey } from "@ichiji/core";
+import { cacheMediaPage, catalog, pageParam } from "../../server/media";
+
+const { topic = "" } = Astro.params;
+if (!isTopicKey(topic)) return new Response(null, { status: 404 });
+cacheMediaPage(Astro);
+const t = getTopic(topic)!;
+const perPage = 24;
+const page = pageParam(Astro.url);
+const repo = catalog();
+const [articles, total] = await Promise.all([repo.listArticles({ limit: perPage, offset: (page - 1) * perPage, topic }), repo.countArticles({ topic })]);
+---
+
+<Base title={`${t.name}の脆弱性（CVE）`} description={t.description} activeTopic={topic}>
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li><a href="/topics/">トピック</a></li><li aria-current="page">{t.name}</li></ol></nav>
+    <header class="page-head">
+      <p class="eyebrow">{t.label}</p>
+      <h1>{t.name}</h1>
+      <p class="muted">{t.description}</p>
+      <p class="small"><a href={`/cve/?topic=${topic}`}>このトピックのCVE一覧（CVE DB）→</a></p>
+    </header>
+    {articles.length ? <div class="cards">{articles.map((a) => <ArticleCard article={a} />)}</div> : <p class="empty">このトピックの記事は準備中です。</p>}
+    <Pagination page={page} total={total} perPage={perPage} baseHref={`/${topic}/`} />
+  </div>
+</Base>

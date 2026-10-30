@@ -1,0 +1,54 @@
+---
+import Base from "../../../layouts/Base.astro";
+import AppNav from "../../../components/AppNav.astro";
+import RankBadge from "../../../components/RankBadge.astro";
+import { CatalogRepo } from "@ichiji/db";
+import { getEnv } from "../../../server/env";
+import { articleUrl, formatDate, topicLabel } from "../../../server/format";
+
+const perPage = 100;
+const page = Math.max(1, Number.parseInt(Astro.url.searchParams.get("page") ?? "1", 10) || 1);
+const repo = new CatalogRepo(getEnv().CATALOG_DB);
+const [articles, pinned, total] = await Promise.all([repo.listArticles({ limit: perPage, offset: (page - 1) * perPage }), repo.listArticles({ limit: 50, pinned: true }), repo.countArticles()]);
+const pinnedSlugs = new Set(pinned.map((p) => p.slug));
+---
+
+<Base title="管理：記事とピン留め" noindex>
+  <div class="container">
+    <header class="page-head"><p class="eyebrow">ADMIN</p><h1>記事と EDITOR'S PICK のピン留め</h1><p class="small muted">全{total}本。ピン留めした記事はトップの EDITOR'S PICK に表示されます（新しくピン留めした順に最大4件）。</p></header>
+    <AppNav current="admin-articles" />
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr><th>ピン</th><th>緊急度</th><th>タイトル</th><th>トピック</th><th>公開</th></tr></thead>
+        <tbody>
+          {articles.map((a) => (
+            <tr>
+              <td><button type="button" class="btn btn--sm" data-pin={a.slug} aria-pressed={pinnedSlugs.has(a.slug) ? "true" : "false"}>{pinnedSlugs.has(a.slug) ? "★ ピン留め中" : "☆ ピン留め"}</button></td>
+              <td><RankBadge rank={a.general_rank} /></td>
+              <td><a href={articleUrl(a)} target="_blank">{a.title}</a><div class="small mono">{a.primary_cve}</div></td>
+              <td>{topicLabel(a.topic)}</td>
+              <td class="small">{formatDate(a.published_at)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <nav class="pagination">
+      {page > 1 && <a class="btn btn--sm" href={`?page=${page - 1}`}>← 前へ</a>}
+      {page * perPage < total && <a class="btn btn--sm" href={`?page=${page + 1}`}>次へ →</a>}
+    </nav>
+  </div>
+</Base>
+
+<script>
+  import { api } from "../../../scripts/forms";
+  document.querySelectorAll<HTMLButtonElement>("[data-pin]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const pinned = b.getAttribute("aria-pressed") !== "true";
+      const r = await api("/api/admin/pin", { body: { slug: b.dataset.pin, pinned } });
+      if (!r.ok) return;
+      b.setAttribute("aria-pressed", pinned ? "true" : "false");
+      b.textContent = pinned ? "★ ピン留め中" : "☆ ピン留め";
+    }),
+  );
+</script>

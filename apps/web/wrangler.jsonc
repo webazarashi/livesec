@@ -1,0 +1,34 @@
+// 一次対応まとめ：メディア＋SaaS＋API（Astro on Workers ＋ Hono）
+// D1 の database_id は `wrangler d1 create` の結果に置き換える（README 参照）
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "ichiji-matome-web",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "CATALOG_DB",
+      "database_name": "ichiji-catalog",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "../../packages/db/migrations/catalog"
+    },
+    {
+      "binding": "APP_DB",
+      "database_name": "ichiji-app",
+      "database_id": "00000000-0000-0000-0000-000000000002",
+      "migrations_dir": "../../packages/db/migrations/app"
+    }
+  ],
+  "r2_buckets": [{ "binding": "RAW", "bucket_name": "ichiji-raw" }],
+  "queues": { "producers": [{ "binding": "JOBS_QUEUE", "queue": "ichiji-jobs" }] },
+  "analytics_engine_datasets": [{ "binding": "VIEWS", "dataset": "ichiji_article_views" }],
+  "vars": {
+    // workers.dev の公開URL。Better Auth の baseURL・信頼するオリジンもこれに合わせる（11章）
+    "PUBLIC_BASE_URL": "https://ichiji-matome-web.example.workers.dev",
+    // 管理画面に入れるメールアドレス（カンマ区切り）
+    "ADMIN_EMAILS": ""
+  }
+  // シークレット（wrangler secret put）：BETTER_AUTH_SECRET, WEBHOOK_ENC_KEY, INTERNAL_TOKEN
+}

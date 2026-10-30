@@ -1,0 +1,14 @@
+---
+import { RANK_LABELS, type Rank } from "@ichiji/core";
+interface Props {
+  rank: string;
+  size?: "sm" | "lg";
+  withMeaning?: boolean;
+}
+const { rank, size = "sm", withMeaning = false } = Astro.props;
+const meaning = RANK_LABELS[rank as Rank]?.meaning ?? "";
+---
+
+<span class:list={["rank", `rank--${rank}`, size === "lg" && "rank--lg"]} title={`一般緊急度 ${rank}（${meaning}）`}>
+  {rank}{withMeaning && <span>｜{meaning}</span>}
+</span>

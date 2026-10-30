@@ -1,0 +1,21 @@
+---
+interface Props {
+  page: number;
+  total: number;
+  perPage: number;
+  baseHref: string;
+}
+const { page, total, perPage, baseHref } = Astro.props;
+const pages = Math.max(1, Math.ceil(total / perPage));
+const href = (p: number) => (p <= 1 ? baseHref : `${baseHref}?page=${p}`);
+---
+
+{
+  pages > 1 && (
+    <nav class="pagination" aria-label="ページ送り">
+      {page > 1 && <a class="btn btn--sm" href={href(page - 1)}>← 前へ</a>}
+      <span class="small muted">{page} / {pages}</span>
+      {page < pages && <a class="btn btn--sm" href={href(page + 1)}>次へ →</a>}
+    </nav>
+  )
+}

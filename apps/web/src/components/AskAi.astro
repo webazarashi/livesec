@@ -1,0 +1,197 @@
+---
+import { ASK_PRESETS, DISCLAIMERS, MY_ENVIRONMENT_MAX_CHARS, MY_ENVIRONMENT_TEMPLATE, QUESTION_MAX_CHARS, type AskArticleData } from "@ichiji/core";
+
+interface Props {
+  data: AskArticleData;
+}
+const { data } = Astro.props;
+// HTMLに埋め込むのは記事の公開情報だけ。「私の環境」はログイン中にブラウザがAPIから取得する（6-4）
+const json = JSON.stringify(data).replace(/</g, "\\u003c");
+---
+
+<section class="askai" id="ask-ai" aria-labelledby="askai-title">
+  <div class="askai__head">
+    <span class="askai__badge">ASK AI</span>
+    <h2 id="askai-title">この記事をもとにAIに相談する</h2>
+  </div>
+  <p class="askai__lead">
+    この記事の事実データと要点を前提に、あなたの環境に合わせた答えを、普段使っているAI（ChatGPT・Claude・Gemini）に出してもらえます。プロンプトはブラウザの中で組み立て、当サイトのサーバには送りません。
+  </p>
+
+  <div class="askai__presets" role="group" aria-label="質問のプリセット">
+    {ASK_PRESETS.map((p) => <button type="button" class="askai__preset" data-preset={p.key} aria-pressed="false">{p.label}</button>)}
+  </div>
+
+  <div class="askai__fields">
+    <div class="field">
+      <label for="askai-env">私の環境</label>
+      <textarea id="askai-env" rows="3" maxlength={MY_ENVIRONMENT_MAX_CHARS} data-askai-env>{MY_ENVIRONMENT_TEMPLATE}</textarea>
+      <p class="hint" data-askai-env-hint>
+        OS・言語・フレームワーク・バージョン・公開範囲を書くと、答えが具体的になります（{MY_ENVIRONMENT_MAX_CHARS}文字まで）。<a href="/signup/">会員登録</a>すると「私の環境」が自動で入ります。
+      </p>
+    </div>
+    <div class="field">
+      <label for="askai-q">質問</label>
+      <textarea id="askai-q" rows="4" maxlength={QUESTION_MAX_CHARS} placeholder="プリセットを選ぶか、自由に質問を書いてください" data-askai-question></textarea>
+    </div>
+  </div>
+
+  <details class="askai__preview">
+    <summary>AIに渡すプロンプトを確認する</summary>
+    <pre data-askai-preview></pre>
+  </details>
+
+  <div class="askai__send">
+    <button type="button" class="btn btn--dark" data-ask-target="chatgpt">ChatGPTで相談 →</button>
+    <button type="button" class="btn btn--dark" data-ask-target="claude">Claudeで相談 →</button>
+    <button type="button" class="btn btn--dark" data-ask-target="gemini">Geminiで相談 →</button>
+  </div>
+  <p class="askai__copy"><button type="button" class="linkish" data-ask-copy>プロンプトをコピー（他のAI用）</button></p>
+  <p class="askai__status" role="status" aria-live="polite" data-askai-status></p>
+  <p class="askai__note">{DISCLAIMERS.askAi}</p>
+  <p class="askai__cta" data-askai-cta>
+    <strong>会員登録すると『私の環境』入りでAIに聞けます。</strong>
+    <a class="btn btn--primary btn--sm" href="/signup/">会員登録</a>
+  </p>
+  <script type="application/json" id="askai-data" set:html={json} />
+</section>
+
+<script>
+  import "../scripts/askai";
+</script>
+
+<style>
+  .askai {
+    background: var(--paper);
+    border: 2px solid var(--brand);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin: 40px 0;
+    scroll-margin-top: 90px;
+  }
+  .askai__head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .askai__head h2 {
+    margin: 0;
+    font-size: 20px;
+  }
+  .askai__badge {
+    background: var(--brand);
+    color: #fff;
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    padding: 2px 10px;
+    border-radius: 4px;
+  }
+  .askai__lead {
+    font-size: 14px;
+    color: var(--ink-2);
+    margin: 12px 0 16px;
+  }
+  .askai__presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .askai__preset {
+    border: 1px solid var(--line);
+    background: var(--brand-soft-2);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .askai__preset[aria-pressed="true"] {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: #fff;
+  }
+  .askai__fields {
+    display: grid;
+    gap: 12px;
+  }
+  .askai__fields textarea {
+    min-height: 0;
+  }
+  .askai__preview {
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  .askai__preview summary {
+    cursor: pointer;
+    color: var(--brand);
+  }
+  .askai__preview pre {
+    white-space: pre-wrap;
+    background: var(--code-bg);
+    color: var(--code-ink);
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    max-height: 320px;
+    overflow: auto;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .askai__send {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .askai__copy {
+    margin: 8px 0 0;
+    font-size: 13px;
+  }
+  .linkish {
+    border: 0;
+    background: none;
+    color: var(--brand);
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+  }
+  .askai__status {
+    min-height: 1.5em;
+    font-size: 13px;
+    color: var(--brand-ink);
+    font-weight: 600;
+    margin: 6px 0 0;
+  }
+  .askai__note {
+    font-size: 12px;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+    margin: 12px 0 0;
+    line-height: 1.8;
+  }
+  .askai__cta {
+    margin: 12px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: var(--brand-soft);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+  :global(html[data-member="1"]) .askai__cta {
+    display: none;
+  }
+  @media (max-width: 640px) {
+    .askai {
+      padding: 16px;
+    }
+    .askai__send {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

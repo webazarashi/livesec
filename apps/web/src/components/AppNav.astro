@@ -1,0 +1,22 @@
+---
+interface Props {
+  current: "dashboard" | "settings" | "admin" | "admin-import" | "admin-articles";
+}
+const { current } = Astro.props;
+const isAdmin = Astro.locals.isAdmin;
+const items = [
+  { key: "dashboard", href: "/app/", label: "ダッシュボード" },
+  { key: "settings", href: "/app/settings/", label: "アカウント設定・私の環境" },
+  ...(isAdmin
+    ? [
+        { key: "admin", href: "/admin/", label: "管理：記事待ち" },
+        { key: "admin-import", href: "/admin/import/", label: "管理：取り込み" },
+        { key: "admin-articles", href: "/admin/articles/", label: "管理：記事とピン留め" },
+      ]
+    : []),
+];
+---
+
+<nav class="app-nav" aria-label="会員メニュー">
+  {items.map((i) => <a href={i.href} aria-current={i.key === current ? "page" : undefined}>{i.label}</a>)}
+</nav>

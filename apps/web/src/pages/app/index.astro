@@ -1,0 +1,66 @@
+---
+import Base from "../../layouts/Base.astro";
+import AppNav from "../../components/AppNav.astro";
+import RankBadge from "../../components/RankBadge.astro";
+import { AccountRepo } from "@ichiji/db";
+import { DISCLAIMERS } from "@ichiji/core";
+import { tenantRepoFor } from "../../server/app";
+import { getEnv } from "../../server/env";
+import { daysSince, formatDateTime } from "../../server/format";
+
+const user = Astro.locals.user!;
+const repo = await tenantRepoFor(Astro.locals);
+const projects = await repo.listProjects();
+const rows = await Promise.all(projects.map(async (p) => ({ p, counts: await repo.alertCounts(p.id) })));
+const myEnv = await new AccountRepo(getEnv().APP_DB).getMyEnvironment(user.id);
+---
+
+<Base title="ダッシュボード" noindex>
+  <div class="container">
+    <header class="page-head"><p class="eyebrow">DASHBOARD</p><h1>ダッシュボード</h1><p class="muted small">{user.email}</p></header>
+    <AppNav current="dashboard" />
+
+    {!user.twoFactorEnabled && <p class="notice notice--warn">二要素認証（MFA）が無効です。<a href="/app/settings/#mfa">アカウント設定</a>から有効にしてください。</p>}
+    {!myEnv.text && <p class="notice">「私の環境」を設定すると、記事の Ask AI に自動で入ります。<a href="/app/settings/#my-environment">設定する</a></p>}
+
+    <section class="section">
+      <div class="section__head">
+        <h2 class="section__title"><span class="eyebrow">PROJECTS</span><span>プロジェクト</span></h2>
+        <a class="btn btn--primary btn--sm" href="/app/projects/new/">＋ プロジェクトを追加</a>
+      </div>
+      <p class="small muted">1つの stack.yaml が1プロジェクトです。stack.yaml と SBOM（CycloneDX JSON）を登録すると、3時間ごとに照合し、S・Aは即時、B以下は毎週月曜09:00にSlackへ通知します。</p>
+      {
+        rows.length ? (
+          <div class="table-scroll">
+            <table class="data">
+              <thead><tr><th>プロジェクト</th><th>未対応・対応中</th><th>スタック最終更新</th><th>最終照合</th><th>Slack</th></tr></thead>
+              <tbody>
+                {rows.map(({ p, counts }) => {
+                  const days = daysSince(p.stack_updated_at);
+                  return (
+                    <tr>
+                      <td><a href={`/app/projects/${p.id}/`}><strong>{p.name}</strong></a>{p.service_name && <div class="small muted">{p.service_name}</div>}</td>
+                      <td>
+                        {(["S", "A", "B", "C"] as const).map((r) => (counts[r] ? <span style="margin-right:6px"><RankBadge rank={r} /> {counts[r]}</span> : null))}
+                        {counts.total === 0 && <span class="muted small">なし</span>}
+                      </td>
+                      <td>{p.stack_updated_at ? <>{formatDateTime(p.stack_updated_at)}<div class="small muted">{days}日前{days !== null && days >= 30 && "（更新をおすすめします）"}</div></> : <a href={`/app/projects/${p.id}/settings/`}>未登録 → 登録する</a>}</td>
+                      <td>{formatDateTime(p.last_matched_at)}</td>
+                      <td>{p.has_slack ? "設定済み" : <a href={`/app/projects/${p.id}/settings/#slack`}>未設定</a>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div class="empty">
+            <p>まだプロジェクトがありません。</p>
+            <a class="btn btn--primary" href="/app/projects/new/">最初のプロジェクトを作る</a>
+          </div>
+        )
+      }
+      <p class="small muted" style="margin-top:12px">{DISCLAIMERS.judgement}</p>
+    </section>
+  </div>
+</Base>

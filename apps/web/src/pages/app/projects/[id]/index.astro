@@ -1,0 +1,178 @@
+---
+import Base from "../../../../layouts/Base.astro";
+import AppNav from "../../../../components/AppNav.astro";
+import RankBadge from "../../../../components/RankBadge.astro";
+import { ALERT_STATUSES, DISCLAIMERS, isAlertStatus, type AlertStatus } from "@ichiji/core";
+import { alertSteps, CatalogRepo } from "@ichiji/db";
+import { tenantRepoFor } from "../../../../server/app";
+import { getEnv } from "../../../../server/env";
+import { daysSince, formatDateTime, rankMeaning } from "../../../../server/format";
+
+const repo = await tenantRepoFor(Astro.locals);
+const project = await repo.getProject(Astro.params.id ?? "");
+if (!project) return new Response("見つかりません", { status: 404 });
+const filterParam = Astro.url.searchParams.get("status") ?? "active";
+const statuses: AlertStatus[] | undefined =
+  filterParam === "all" ? undefined : filterParam === "active" ? ["open", "in_progress"] : isAlertStatus(filterParam) ? [filterParam] : ["open", "in_progress"];
+const showResolved = Astro.url.searchParams.get("resolved") === "1";
+const [alerts, counts, components] = await Promise.all([
+  repo.listAlerts(project.id, { statuses, includeResolved: showResolved }),
+  repo.alertCounts(project.id),
+  repo.listComponents(project.id),
+]);
+const articles = await new CatalogRepo(getEnv().CATALOG_DB).articleUrlsForCves([...new Set(alerts.map((a) => a.vuln_id))]);
+const days = daysSince(project.stack_updated_at);
+const filters = [
+  { key: "active", label: "未対応・対応中" },
+  ...ALERT_STATUSES.map((s) => ({ key: s.key, label: s.label })),
+  { key: "all", label: "すべて" },
+];
+---
+
+<Base title={`${project.name}｜アラート`} noindex>
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/app/">ダッシュボード</a></li><li aria-current="page">{project.name}</li></ol></nav>
+    <header class="page-head">
+      <p class="eyebrow">PROJECT</p>
+      <h1>{project.name}</h1>
+      <p class="small muted">
+        {project.service_name && <>サービス：{project.service_name}　</>}
+        データ重要度：{project.data_sensitivity}　
+        スタック最終更新：{project.stack_updated_at ? `${formatDateTime(project.stack_updated_at)}（${days}日前）` : "未登録"}　
+        最終照合：{formatDateTime(project.last_matched_at)}
+      </p>
+      <p><a class="btn btn--sm" href={`/app/projects/${project.id}/settings/`}>スタック登録・APIトークン・Slack</a></p>
+    </header>
+    <AppNav current="dashboard" />
+
+    {!project.stack_updated_at && <p class="notice notice--warn">スタック（stack.yaml＋SBOM）が未登録です。<a href={`/app/projects/${project.id}/settings/`}>登録する</a></p>}
+    {days !== null && days >= 30 && <p class="notice notice--warn">スタックの最終更新から{days}日経っています。CIでデプロイごとに自動送信するのがおすすめです。</p>}
+
+    <div class="kpis" style="margin-bottom:20px">
+      {(["S", "A", "B", "C"] as const).map((r) => <div class="kpi"><RankBadge rank={r} withMeaning /><strong>{counts[r]}</strong><span class="small muted">未対応・対応中</span></div>)}
+    </div>
+
+    <nav class="filters" aria-label="状態で絞り込む">
+      {filters.map((f) => <a class:list={["chip", filterParam === f.key && "chip--topic"]} href={`?status=${f.key}${showResolved ? "&resolved=1" : ""}`}>{f.label}</a>)}
+      <a class="chip" href={`?status=${filterParam}${showResolved ? "" : "&resolved=1"}`}>{showResolved ? "解消済みを隠す" : "解消済み（該当しなくなったもの）も表示"}</a>
+    </nav>
+
+    {
+      alerts.length ? (
+        <div class="table-scroll">
+          <table class="data alerts">
+            <thead>
+              <tr><th>個別緊急度</th><th>CVE・パッケージ</th><th>使用中（component）</th><th>修正版</th><th>判定の内訳</th><th>状態</th><th>AIに相談</th></tr>
+            </thead>
+            <tbody>
+              {alerts.map((a) => {
+                const { steps, notes, fixed } = alertSteps(a);
+                const article = articles.get(a.vuln_id);
+                const href = article ? `/${article.topic}/${article.slug}/` : null;
+                return (
+                  <tr class:list={[a.resolved_at && "resolved"]}>
+                    <td><RankBadge rank={a.rank} /><div class="small muted">{rankMeaning(a.rank)}</div></td>
+                    <td>
+                      {href ? <a class="mono" href={href}>{a.vuln_id}</a> : <span class="mono">{a.vuln_id}</span>}
+                      <div class="small mono">{a.package_label}</div>
+                      <div class="small muted">検出 {formatDateTime(a.first_detected_at)}{a.resolved_at && <>／解消 {formatDateTime(a.resolved_at)}</>}</div>
+                    </td>
+                    <td>
+                      <span class="mono">{a.version_unknown ? "unknown" : a.installed_version}</span>
+                      <div class="small">{a.component}{a.is_dev ? "（開発用依存）" : ""}</div>
+                      <div class="small muted">{a.version_unknown ? "バージョン確認が必要" : DISCLAIMERS.versionOnly}</div>
+                    </td>
+                    <td class="mono small">{fixed.join(", ") || "—"}</td>
+                    <td class="small">
+                      一般 {a.general_rank} → 個別 {a.rank}
+                      {steps.length > 0 && <ul class="steps">{steps.map((s) => <li>{s}</li>)}</ul>}
+                      {notes.map((n) => <div class="note">{n}</div>)}
+                    </td>
+                    <td>
+                      <select data-alert-status={a.id} aria-label={`${a.vuln_id} の状態`}>
+                        {ALERT_STATUSES.map((s) => <option value={s.key} selected={s.key === a.status}>{s.label}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      {href ? (
+                        <div class="ask-links">
+                          <a href={`${href}?ask=need#ask-ai`}>うちには必要？</a>
+                          <a href={`${href}?ask=steps#ask-ai`}>対応手順</a>
+                          <a href={`${href}?ask=customer#ask-ai`}>顧客への回答</a>
+                        </div>
+                      ) : (
+                        <span class="small muted">記事準備中</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p class="empty">該当するアラートはありません。</p>
+      )
+    }
+    <p class="form-status" role="status" data-status></p>
+    <p class="small muted" style="margin-top:12px">{DISCLAIMERS.judgement}　到達可能性（脆弱な機能を実際に使っているか）は判定していません。</p>
+
+    {
+      components.length > 0 && (
+        <section class="section">
+          <h2>component</h2>
+          <div class="table-scroll">
+            <table class="data">
+              <thead><tr><th>名前</th><th>exposure</th><th>理由</th><th>managed</th></tr></thead>
+              <tbody>{components.map((c) => <tr><td>{c.name}</td><td>{c.exposure}</td><td class="small">{c.exposure_reason}</td><td>{c.managed ? "true" : "false"}</td></tr>)}</tbody>
+            </table>
+          </div>
+        </section>
+      )
+    }
+  </div>
+</Base>
+
+<script>
+  import { api, errorMessage, setStatus } from "../../../../scripts/forms";
+  const projectId = location.pathname.split("/")[3]!;
+  [...document.querySelectorAll("[data-alert-status]")].map((el) => el as unknown as HTMLSelectElement).forEach((sel) =>
+    sel.addEventListener("change", async () => {
+      const r = await api(`/api/projects/${projectId}/alerts/${sel.dataset.alertStatus}`, { method: "PATCH", body: { status: sel.value } });
+      setStatus(document.querySelector("[data-status]"), r.ok ? "状態を更新しました" : errorMessage(r.data), r.ok ? "ok" : "error");
+    }),
+  );
+</script>
+
+<style>
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .alerts .steps {
+    margin: 4px 0 0;
+    padding-left: 1.1em;
+    color: var(--muted);
+  }
+  .alerts .note {
+    color: var(--rank-a);
+    font-weight: 600;
+  }
+  .alerts tr.resolved {
+    opacity: 0.6;
+  }
+  .ask-links {
+    display: grid;
+    gap: 2px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .alerts select {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 4px 6px;
+    background: var(--paper);
+  }
+</style>

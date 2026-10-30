@@ -1,0 +1,27 @@
+---
+import Base from "../../layouts/Base.astro";
+import { TOPICS } from "@ichiji/core";
+import { cacheMediaPage, catalog } from "../../server/media";
+
+cacheMediaPage(Astro);
+const counts = await catalog().countByTopic();
+---
+
+<Base title="トピック一覧" activeSection="topics">
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">トピック一覧</li></ol></nav>
+    <header class="page-head"><p class="eyebrow">TOPICS</p><h1>トピック一覧</h1></header>
+    <div class="cards">
+      {
+        TOPICS.map((t) => (
+          <a class="card article-card" href={`/${t.key}/`}>
+            <span class="eyebrow">{t.label}</span>
+            <h2 class="article-card__title">{t.name}</h2>
+            <p class="article-card__lead">{t.description}</p>
+            <span class="small" style="color:var(--brand);font-weight:700">{counts[t.key] ?? 0}本の記事</span>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</Base>

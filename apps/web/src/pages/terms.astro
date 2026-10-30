@@ -1,0 +1,34 @@
+---
+import Base from "../layouts/Base.astro";
+import { DATA_SOURCES, DISCLAIMERS, SITE } from "@ichiji/core";
+import { cacheMediaPage } from "../server/media";
+cacheMediaPage(Astro, 3600);
+---
+
+<Base title="利用規約">
+  <div class="container doc">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">利用規約</li></ol></nav>
+    <header class="page-head"><p class="eyebrow">TERMS</p><h1>利用規約</h1></header>
+    <p class="notice notice--warn small">この文面は初期案です。最終的な規約文面は専門家の確認を受けてください。</p>
+    <h2>第1条（参考情報としての提供）</h2>
+    <p>{SITE.name}（以下「本サービス」）が提供する記事・事実データ・緊急度の判定・通知・Ask AI のプロンプトその他すべての出力は、公開情報をもとに作成した参考情報です。本サービスは、その正確性・完全性・最新性・特定目的への適合性を保証しません。</p>
+    <p>{DISCLAIMERS.footer}</p>
+    <h2>第2条（判断と実行の責任）</h2>
+    <p>脆弱性への対応の判断と実行は、利用者の責任で行ってください。個別の判定はバージョン情報の照合にもとづくもので、脆弱な機能を実際に使っているか（到達可能性）は判定していません。</p>
+    <h2>第3条（免責）</h2>
+    <p>本サービスの情報の利用によって生じた損害について、本サービスは責任を負いません。ただし、法令により免責が認められない場合は、損害の発生した月に利用者が本サービスに支払った金額を上限とします。</p>
+    <h2>第4条（外部AIサービス）</h2>
+    <p>Ask AI で利用者が外部のAIサービスに渡した内容と、外部AIサービスの回答について、本サービスは関与せず、保証もしません。</p>
+    <h2>第5条（第三者のデータ）</h2>
+    <p>本サービスは第三者のデータソースの情報を含みます。各ソースのライセンスに従って出典を表示します。</p>
+    <ul>{DATA_SOURCES.map((s) => <li>{s.name}：{s.license}</li>)}</ul>
+    <h2>第6条（登録情報の取り扱い）</h2>
+    <p>利用者が登録したスタック情報・「私の環境」は、照合・通知・Ask AI のためにのみ使い、目的外に利用しません。保存と削除の方針は <a href="/privacy/">プライバシーポリシー</a> によります。</p>
+    <h2>第7条（禁止事項）</h2>
+    <ul>
+      <li>本サービスへの不正アクセス、過度な負荷をかける行為</li>
+      <li>他人の認証情報・APIトークンを使う行為</li>
+      <li>記事の内容を悪用手順として転用する行為</li>
+    </ul>
+  </div>
+</Base>

@@ -1,0 +1,45 @@
+---
+import Base from "../../layouts/Base.astro";
+---
+
+<Base title="保存した記事" noindex>
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">保存した記事</li></ol></nav>
+    <header class="page-head">
+      <p class="eyebrow">SAVED</p>
+      <h1>保存した記事</h1>
+      <p class="muted">☆保存した記事は、このブラウザだけに保存されます（ログイン不要）。</p>
+    </header>
+    <ul class="list" data-saved-list></ul>
+    <p class="empty" data-saved-empty hidden>保存した記事はありません。記事の「☆保存する」から保存できます。</p>
+  </div>
+</Base>
+
+<script>
+  import { loadSaved } from "../../scripts/site";
+  const list = document.querySelector<HTMLUListElement>("[data-saved-list]")!;
+  const empty = document.querySelector<HTMLElement>("[data-saved-empty]")!;
+  const saved = loadSaved();
+  empty.hidden = saved.length > 0;
+  for (const s of saved) {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.className = "list-row";
+    a.href = s.url.startsWith("/") ? s.url : "/";
+    const badge = document.createElement("span");
+    badge.className = `rank rank--${/^[SABC]$/.test(s.rank) ? s.rank : "C"}`;
+    badge.textContent = s.rank || "-";
+    const body = document.createElement("span");
+    body.innerHTML = "";
+    const title = document.createElement("span");
+    title.className = "list-row__title";
+    title.textContent = s.title;
+    const meta = document.createElement("span");
+    meta.className = "small muted";
+    meta.textContent = ` ${s.cve}・${new Date(s.savedAt).toLocaleDateString("ja-JP")}に保存`;
+    body.appendChild(title); body.appendChild(meta);
+    a.appendChild(badge); a.appendChild(body);
+    li.appendChild(a);
+    list.appendChild(li);
+  }
+</script>

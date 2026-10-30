@@ -1,0 +1,27 @@
+---
+import Base from "../../layouts/Base.astro";
+import { cacheMediaPage, catalog } from "../../server/media";
+
+cacheMediaPage(Astro);
+const tags = await catalog().listTags(300);
+---
+
+<Base title="タグ一覧" activeSection="tags">
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくず"><ol><li><a href="/">ホーム</a></li><li aria-current="page">タグ一覧</li></ol></nav>
+    <header class="page-head"><p class="eyebrow">TAGS</p><h1>タグ一覧</h1></header>
+    {tags.length ? <p class="tag-cloud">{tags.map((t) => <a class="chip" href={`/tags/${encodeURIComponent(t.tag)}/`}>#{t.tag}<span class="muted">（{t.n}）</span></a>)}</p> : <p class="empty">タグはまだありません。</p>}
+  </div>
+</Base>
+
+<style>
+  .tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .tag-cloud .chip {
+    font-size: 14px;
+    padding: 4px 12px;
+  }
+</style>
